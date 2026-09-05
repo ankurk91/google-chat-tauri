@@ -9,8 +9,9 @@
 //! `onBeforeSendHeaders`, which left `navigator.userAgent` untouched. Tauri sets
 //! the webview-level UA, so the header and the JS-visible value agree.
 
-/// Bump periodically. Single source of truth.
-const FIREFOX_MAJOR: &str = "134";
+/// Bump periodically. Single source of truth. Current release as of
+/// 2026-09-06: 155.
+const FIREFOX_MAJOR: &str = "155";
 
 pub fn spoofed() -> String {
     // Escape hatch for debugging Google sign-in problems without a rebuild.
