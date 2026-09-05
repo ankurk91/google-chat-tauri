@@ -94,6 +94,9 @@ pub fn run() {
                 // These are chatty and say nothing we need.
                 .level_for("tao", log::LevelFilter::Warn)
                 .level_for("wry", log::LevelFilter::Warn)
+                // Local time, not UTC: the first thing anyone does with a log
+                // is line it up against when they saw the problem.
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                 .max_file_size(2 * 1024 * 1024)
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
                 .build(),
@@ -130,6 +133,14 @@ pub fn run() {
             let prefs = config::load(handle);
             app.state::<Config>().update(|p| *p = prefs.clone());
 
+            // `--hidden` is what the autostart entry passes; honour the
+            // preference too, so the app can start straight to the tray.
+            let hidden = prefs.start_hidden || std::env::args().any(|a| a == "--hidden");
+
+            // Before anything that can fail, so a log from a launch that died
+            // still says which machine and build it died on.
+            features::diagnostics::log_startup(handle, &prefs, hidden);
+
             let window = features::window::create(handle)?;
 
             app.set_menu(features::app_menu::build(handle)?)?;
@@ -140,9 +151,6 @@ pub fn run() {
                 let _ = window.set_zoom(prefs.zoom);
             }
 
-            // `--hidden` is what the autostart entry passes; honour the
-            // preference too, so the app can start straight to the tray.
-            let hidden = prefs.start_hidden || std::env::args().any(|a| a == "--hidden");
             if !hidden {
                 window.show()?;
             }

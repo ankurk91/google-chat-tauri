@@ -176,6 +176,16 @@ It writes to the platform log directory
 **Help → Show Logs**. Debug builds log at `debug`, release at `info`; `tao` and
 `wry` are capped at `warn` because they are chatty.
 
+Every run opens with a block from `features::diagnostics`: version and
+identifier, platform with distribution and kernel, the webview engine and its
+version, the desktop and whether it is X11 or Wayland, where the config and logs
+live, and the preferences in force. Almost every quirk in this app is specific
+to one of those, so a log without them cannot be acted on. It is written before
+anything that can fail, so a launch that dies still says where it died.
+
+Timestamps are local, not UTC — the first thing anyone does with a log is line
+it up against when they saw the problem.
+
 The page logs through the `page_log` command, which honours `error`, `warn` and
 `debug` and treats anything else as `info`. Diagnostics that should not follow a
 user into a release build go at `debug`, which a release build's `info` level

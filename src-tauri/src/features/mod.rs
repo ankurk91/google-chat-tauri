@@ -2,6 +2,7 @@ pub mod app_menu;
 pub mod autostart;
 pub mod badge;
 pub mod close_to_tray;
+pub mod diagnostics;
 pub mod downloads;
 pub mod external_links;
 pub mod notifications;
