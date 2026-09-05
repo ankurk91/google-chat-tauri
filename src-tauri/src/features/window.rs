@@ -44,8 +44,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .build()
 }
 
-/// Bring the main window back from the tray / another workspace.
-/// Ported from electron `src/main/features/singleInstance.ts` + `handleNotification.ts`.
+/// Bring the main window back -- from the tray, from minimised, or from another
+/// workspace. Ported from electron `src/main/features/singleInstance.ts` +
+/// `handleNotification.ts`.
 pub fn show_and_focus(app: &AppHandle) {
     let Some(win) = app.get_webview_window(MAIN) else {
         return;
@@ -54,9 +55,54 @@ pub fn show_and_focus(app: &AppHandle) {
     #[cfg(target_os = "macos")]
     let _ = app.show();
 
+    // Restoring a *minimised* window on Linux means unmapping it first. tao
+    // asks GTK to deiconify and on Cinnamon nothing happens -- measured with
+    // the tray's Toggle: WM_STATE never leaves 3 (Iconic), so the window stayed
+    // minimised however often it was asked. Hiding re-maps it in the normal
+    // state on the next show, which is what closing to the tray does anyway.
+    #[cfg(target_os = "linux")]
     if win.is_minimized().unwrap_or(false) {
-        let _ = win.unminimize();
+        let _ = win.hide();
     }
+
+    // Elsewhere the ordinary route works. Unconditional rather than asking
+    // first: unminimising a window that is not minimised does nothing.
+    let _ = win.unminimize();
     let _ = win.show();
     let _ = win.set_focus();
+
+    #[cfg(target_os = "linux")]
+    focus_once_restored(win);
+}
+
+/// Focus the window after the deiconify actually lands.
+///
+/// tao refuses to focus a window it still believes is minimised, and it only
+/// stops believing that when the window manager confirms the deiconify -- which
+/// happens after `show_and_focus` has returned. The `set_focus` above is
+/// therefore dropped in precisely the case that needs it: Toggle in the tray
+/// while the window sits minimised, which left it minimised.
+///
+/// So wait for tao to catch up, then ask once more. Waiting off-thread because
+/// this is called from the GTK main thread, which is the thread that has to
+/// process the deiconify.
+#[cfg(target_os = "linux")]
+fn focus_once_restored(win: WebviewWindow) {
+    use std::time::Duration;
+
+    std::thread::spawn(move || {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(50));
+
+            if win.is_focused().unwrap_or(false) {
+                return;
+            }
+            if !win.is_minimized().unwrap_or(false) {
+                let _ = win.set_focus();
+                return;
+            }
+        }
+
+        log::debug!("window: still minimised a second after being asked to show");
+    });
 }

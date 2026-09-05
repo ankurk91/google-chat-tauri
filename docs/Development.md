@@ -147,6 +147,14 @@ relevant code:
   caller on a plugin thread. `request_restart` exits through `RunEvent::Exit`
   instead, and needs the same `quitting` flag as Quit or close-to-tray vetoes
   the window close.
+- **A minimised window cannot be deiconified on Cinnamon.** `unminimize()`
+  reaches `gtk_window_deiconify`, and the window stays iconic however often it
+  is asked — measured, `WM_STATE` never leaves 3. Hiding it and showing it again
+  re-maps it in the normal state. And tao refuses to focus a window it still
+  believes is minimised, learning otherwise only when the window manager
+  confirms the deiconify, which is after the call returns — so the focus has to
+  be asked for again once that lands. Both are handled in
+  `window::show_and_focus`.
 - **A hidden window is not just invisible, it is inert.** Chat's router does
   nothing while the page is hidden, so a notification click has to raise the
   window *first* and let it paint before the page is told about the click --
