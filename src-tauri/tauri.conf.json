@@ -12,13 +12,23 @@
     "windows": [],
     "security": {
       "csp": null,
-      "capabilities": ["default", "remote-chat"]
+      "capabilities": [
+        "default",
+        "remote-chat"
+      ]
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "app", "dmg", "nsis"],
+    "targets": [
+      "deb",
+      "appimage",
+      "app",
+      "dmg",
+      "nsis"
+    ],
     "category": "SocialNetworking",
+    "publisher": "ankurk91",
     "shortDescription": "Unofficial desktop app for Google Chat",
     "longDescription": "Unofficial desktop wrapper for Google Chat with a tray icon, unread message counter and desktop notifications.",
     "copyright": "Copyright (c) ankurk91",
@@ -36,11 +46,7 @@
       "deb": {
         "section": "net",
         "priority": "optional",
-        "depends": [
-          "libwebkit2gtk-4.1-0",
-          "libgtk-3-0",
-          "libayatana-appindicator3-1"
-        ]
+        "desktopTemplate": "deb/app.desktop"
       },
       "appimage": {
         "bundleMediaFramework": true
@@ -53,7 +59,9 @@
       },
       "nsis": {
         "installMode": "perMachine",
-        "languages": ["English"],
+        "languages": [
+          "English"
+        ],
         "displayLanguageSelector": false
       }
     },

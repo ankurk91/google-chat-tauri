@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name={{name}}
+Comment={{comment}}
+Exec={{exec}}{{exec_arg}}
+Icon={{icon}}
+Terminal=false
+StartupWMClass={{exec}}
+StartupNotify=true
+Categories=Network;InstantMessaging;Chat;
+Keywords=chat;google;messaging;hangouts;workspace;
