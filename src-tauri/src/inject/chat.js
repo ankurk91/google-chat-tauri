@@ -341,6 +341,7 @@
 
     ev.listen('notification-activated', function (msg) {
       var n = liveNotifications[msg.payload];
+      log('info', 'notification activated: id=' + msg.payload + (n ? ' (dispatching click)' : ' (no live object)'));
       if (n) n._dispatch('click');
     })['catch'](ignore);
   }

@@ -15,8 +15,7 @@ its own, so the Linux installer is about 2.5 MB.
 
 - **Unread indicator** — a dot on the tray icon, the count in the window title,
   and a badge on the macOS dock or Windows taskbar.
-- **Desktop notifications** — with sound. On Linux, clicking a notification
-  opens the conversation it came from.
+- **Desktop notifications** — with sound.
 - **Lives in the tray** — closing the window hides it rather than quitting;
   the app keeps running and keeps notifying.
 - **Remembers your window** — size, position and maximised state come back
@@ -82,6 +81,16 @@ in `~/.local/share/applications/`.
 **Notifications do not appear.** They come from your desktop's own notification
 service, so check Chat's in-app notification settings first
 (**⚙ Settings → Notifications**), then your desktop's Do Not Disturb.
+
+**Clicking a notification does nothing.** On Linux this is switched off by
+default, because some notification services — Cinnamon's among them — report a
+notification as "clicked" when it simply times out, which would make the window
+pop up by itself after every message. If your desktop handles this correctly
+(GNOME and KDE do), turn it on:
+
+```bash
+GOOGLE_CHAT_NOTIFICATION_ACTIONS=1 google-chat-tauri
+```
 
 **Signed out unexpectedly, or sign-in loops.** Quit from the tray, remove
 `~/.local/share/com.ankurk91.google-chat-tauri`, and start again. That clears

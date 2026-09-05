@@ -33,7 +33,8 @@ corepack pnpm build:mac      # .app + .dmg
 corepack pnpm build:windows  # NSIS installer
 
 cargo test --manifest-path src-tauri/Cargo.toml
-python3 scripts/smoke-test.py   # drives the built binary through real X11 events
+python3 scripts/smoke-test.py          # close-to-tray + window geometry, via real X11 events
+python3 scripts/notification-test.py   # notifications must not raise the window by themselves
 ```
 
 The app closes to the tray, so the window's ✕ will not stop it. Kill it
@@ -108,6 +109,11 @@ relevant code:
   and WebView2 drops notifications silently. `chat.js` replaces it entirely.
   Linux talks to `notify-rust` directly, because the notification plugin's
   click API is mobile-only.
+- **Cinnamon reports notifications as clicked when they expire.** It emits
+  `ActionInvoked("default")` with no user interaction, intermittently, ~5s after
+  showing. Nothing in the signal distinguishes it from a real click, so the
+  clickable action is off unless `GOOGLE_CHAT_NOTIFICATION_ACTIONS=1` is set.
+  `scripts/notification-test.py` guards the regression.
 - **GTK menu accelerators never reach the app** while focus is in the webview.
   All shortcuts are handled in `chat.js`; menu *clicks* work normally.
 - **`Window::set_badge_count` does nothing on most Linux desktops.** It goes
@@ -117,6 +123,20 @@ relevant code:
   emits none, so the tray menu is the only way in. Windows toggles on click.
 - **Chat exposes no `<link rel="icon">`**, so the favicon cannot be used to
   detect new messages. The unread count is the signal.
+
+## Debug-only affordances
+
+In a debug build the tray gains **Demo Badge Count** and **Test Notification**,
+and a second launch doubles as a remote control — the single-instance plugin
+hands the running process the new argv:
+
+```bash
+cargo build --manifest-path src-tauri/Cargo.toml
+./src-tauri/target/debug/google-chat-tauri &
+./src-tauri/target/debug/google-chat-tauri --test-notification
+```
+
+That is what makes the notification path scriptable without clicking a tray menu.
 
 ## Icons
 

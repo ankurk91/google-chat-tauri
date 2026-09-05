@@ -42,6 +42,7 @@ pub fn show(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
 
 /// Tell the page a notification was clicked, and raise the window.
 fn activated(app: &AppHandle, id: u32) {
+    eprintln!("[notify] activated id={id}");
     if let Err(e) = app.emit(ACTIVATED_EVENT, id) {
         eprintln!("[notify] failed to emit activation: {e}");
     }
@@ -58,12 +59,20 @@ fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
         // the daemon's default when running unpackaged.
         .icon("google-chat-tauri")
         // Chat notifications are transient; let the daemon time them out.
-        .hint(notify_rust::Hint::Category("im.received".into()))
-        .action("default", "Open");
+        .hint(notify_rust::Hint::Category("im.received".into()));
 
     if let Some(body) = body {
         builder.body(body);
     }
+
+    if !actions_enabled() {
+        if let Err(e) = builder.show() {
+            eprintln!("[notify] failed to show notification: {e}");
+        }
+        return;
+    }
+
+    builder.action("default", "Open");
 
     let handle = match builder.show() {
         Ok(h) => h,
@@ -73,18 +82,46 @@ fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
         }
     };
 
-    // wait_for_action blocks until the notification is clicked or dismissed, so
-    // it cannot run on the main thread.
+    // wait_for_action blocks until the notification is acted on, so it cannot
+    // run on the main thread.
     let app = app.clone();
     std::thread::spawn(move || {
         handle.wait_for_action(|action| {
-            // "default" is the activation the daemon reports for a plain click;
-            // "__closed" means it was dismissed, which we ignore.
+            // "__closed" means dismissed, which we ignore.
             if action == "default" {
                 activated(&app, id);
             }
         });
     });
+}
+
+/// Whether to register a clickable "default" action on Linux notifications.
+///
+/// Off by default, and that is a deliberate concession to a broken daemon.
+/// Clicking a notification *should* raise the window and open the conversation
+/// it came from -- but Cinnamon's notification service emits
+/// `ActionInvoked("default")` when a notification merely **expires**, with no
+/// user interaction at all (measured: the signal arrives ~5s after showing,
+/// matching the default timeout). `notify-rust` faithfully reports it, and
+/// nothing in the signal distinguishes it from a real click.
+///
+/// Honouring that would pop the window up a few seconds after every single
+/// message, which is far worse than not having click-through. So the action is
+/// only registered when explicitly asked for:
+///
+/// ```text
+/// GOOGLE_CHAT_NOTIFICATION_ACTIONS=1
+/// ```
+///
+/// Worth turning on if your desktop's notification service behaves correctly --
+/// GNOME and KDE are both reported to -- and worth revisiting as a default if
+/// this is ever fixed upstream.
+#[cfg(target_os = "linux")]
+fn actions_enabled() -> bool {
+    matches!(
+        std::env::var("GOOGLE_CHAT_NOTIFICATION_ACTIONS").as_deref(),
+        Ok("1") | Ok("true")
+    )
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]

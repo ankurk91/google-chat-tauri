@@ -18,7 +18,25 @@ pub fn run() {
     // does any work. Ported from electron src/main/features/singleInstance.ts.
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // A second launch normally just means "show me the window".
+            //
+            // In a debug build it doubles as a remote control, because the
+            // plugin hands us the new process's argv: `google-chat-tauri
+            // --test-notification` fires one without needing the tray menu,
+            // which makes the notification path scriptable.
+            #[cfg(debug_assertions)]
+            if argv.iter().any(|a| a == "--test-notification") {
+                features::notifications::show(
+                    app,
+                    0,
+                    "Test Notification",
+                    Some("Click me to check the window comes back."),
+                );
+                return;
+            }
+            let _ = &argv;
+
             features::window::show_and_focus(app);
         }));
     }
