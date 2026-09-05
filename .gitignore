@@ -8,3 +8,43 @@ dist/
 
 # generated app icons (regenerate with: pnpm tauri icon)
 /src-tauri/icons/source-1024.png
+
+# Editors and IDEs
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.\#*
+\#*\#
+.nvim.lua
+.zed/
+
+# Operating system junk
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Secrets. Nothing in this app needs one, and the release is unsigned -- but a
+# signing key or a token that lands here should not be one `git add .` away from
+# being published.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+secrets.json

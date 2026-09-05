@@ -23,7 +23,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .visible(false)
         // Painted before the page renders. Electron used #E8EAED, but Chat
         // follows the system theme and a light flash on a dark desktop is
-        // jarring, so use Google's dark surface colour instead.
+        // jarring, so use Google's dark surface colour instead. Matches the
+        // background in `frontend/index.html`.
         .background_color(tauri::window::Color(0x20, 0x21, 0x24, 0xFF))
         // Zoom is handled in chat.js instead, so the level can be persisted;
         // wry's built-in hotkeys would bypass that.

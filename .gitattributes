@@ -1,0 +1,35 @@
+# Normalise line endings on the way in; check out native on Windows.
+* text=auto
+
+# Always LF, whatever the platform: these are read by shells, by GTK, and by
+# the Debian packaging, none of which want a CR.
+*.sh          text eol=lf
+*.rs          text eol=lf
+*.js          text eol=lf
+*.json        text eol=lf
+*.toml        text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.md          text eol=lf
+*.py          text eol=lf
+*.desktop     text eol=lf
+.editorconfig text eol=lf
+.gitattributes text eol=lf
+.gitignore    text eol=lf
+
+# Binary: never diffed, never touched by line-ending conversion.
+*.png  binary
+*.ico  binary
+*.icns binary
+*.svg  text eol=lf
+*.deb  binary
+*.dmg  binary
+*.exe  binary
+*.AppImage binary
+
+# Generated -- keep it out of diffs and out of language statistics.
+pnpm-lock.yaml       linguist-generated=true -diff
+src-tauri/Cargo.lock linguist-generated=true -diff
+
+# The injected script is the JS half of the app, not vendored code.
+src-tauri/src/inject/chat.js linguist-detectable=true
