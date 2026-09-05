@@ -12,29 +12,11 @@ macro_rules! tray_png {
 
 pub const NORMAL_16: &[u8] = tray_png!("normal-16");
 pub const NORMAL_32: &[u8] = tray_png!("normal-32");
-// Used on macOS/Windows, where the count lives in the dock badge / taskbar
-// overlay and the tray only signals state. Linux uses the numbered `count-32`
-// icons instead, so these are dead code there.
-#[cfg_attr(target_os = "linux", allow(dead_code))]
+// Google's own "unread" variant of the Chat mark: the logo with a red dot.
 pub const BADGE_16: &[u8] = tray_png!("badge-16");
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub const BADGE_32: &[u8] = tray_png!("badge-32");
 pub const OFFLINE_16: &[u8] = tray_png!("offline-16");
 pub const OFFLINE_32: &[u8] = tray_png!("offline-32");
-
-/// Linux tray icons carrying the unread count.
-const COUNT_32: [&[u8]; 10] = [
-    tray_png!("count-32/1"),
-    tray_png!("count-32/2"),
-    tray_png!("count-32/3"),
-    tray_png!("count-32/4"),
-    tray_png!("count-32/5"),
-    tray_png!("count-32/6"),
-    tray_png!("count-32/7"),
-    tray_png!("count-32/8"),
-    tray_png!("count-32/9"),
-    tray_png!("count-32/9plus"),
-];
 
 /// Windows taskbar overlay icons.
 #[cfg(target_os = "windows")]
@@ -51,13 +33,10 @@ const COUNT_16: [&[u8]; 10] = [
     tray_png!("count-16/9plus"),
 ];
 
-/// Index into a `count-*` table for `count >= 1`. Anything above 9 shows "9+".
+/// Index into the `count-16` table for `count >= 1`. Anything above 9 shows "9+".
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn count_index(count: i64) -> usize {
     (count.clamp(1, 10) as usize) - 1
-}
-
-pub fn count_32(count: i64) -> &'static [u8] {
-    COUNT_32[count_index(count)]
 }
 
 #[cfg(target_os = "windows")]
@@ -83,25 +62,21 @@ pub fn initial() -> &'static [u8] {
 }
 
 /// Tray artwork for the current state.
+///
+/// The tray signals *whether* there is anything unread, not how many: the count
+/// itself lives in the window title, and in the dock badge (macOS) or taskbar
+/// overlay (Windows). A digit rendered into a 16-32px tray icon is hard to read
+/// and duplicates what the title already says.
 pub fn tray(connected: bool, count: i64) -> &'static [u8] {
     if !connected {
         return initial();
     }
 
-    if count <= 0 {
-        return if SMALL { NORMAL_16 } else { NORMAL_32 };
-    }
-
-    // Only Linux puts the number in the tray -- macOS has the dock badge and
-    // Windows has the taskbar overlay, so there the tray just shows state.
-    #[cfg(target_os = "linux")]
-    return count_32(count);
-
-    #[cfg(not(target_os = "linux"))]
-    if SMALL {
-        BADGE_16
-    } else {
-        BADGE_32
+    match (count > 0, SMALL) {
+        (true, true) => BADGE_16,
+        (true, false) => BADGE_32,
+        (false, true) => NORMAL_16,
+        (false, false) => NORMAL_32,
     }
 }
 
@@ -114,9 +89,7 @@ mod tests {
         for bytes in [NORMAL_16, NORMAL_32, BADGE_16, BADGE_32, OFFLINE_16, OFFLINE_32] {
             assert!(decode(bytes).is_ok());
         }
-        for n in 1..=15 {
-            assert!(decode(count_32(n)).is_ok(), "count_32({n})");
-        }
+
     }
 
     #[test]
@@ -136,10 +109,9 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
-    fn linux_tray_carries_the_number() {
-        assert_eq!(tray(true, 0), NORMAL_32);
-        assert_eq!(tray(true, 3), count_32(3));
-        assert_eq!(tray(true, 50), count_32(10));
+    fn tray_switches_to_the_dot_variant_when_unread() {
+        assert_eq!(tray(true, 0), if SMALL { NORMAL_16 } else { NORMAL_32 });
+        assert_eq!(tray(true, 1), if SMALL { BADGE_16 } else { BADGE_32 });
+        assert_eq!(tray(true, 99), if SMALL { BADGE_16 } else { BADGE_32 });
     }
 }

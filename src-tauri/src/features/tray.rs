@@ -39,7 +39,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .icon(icons::decode(icons::initial())?)
         .tooltip("Google Chat")
         .menu(&menu)
-        .show_menu_on_left_click(false)
+        // Windows gets a real click event and toggles directly. Everywhere else
+        // left-click opens the menu, whose first item is Toggle -- Linux tray
+        // backends deliver no click events at all, so a menu is the only option.
+        .show_menu_on_left_click(!cfg!(target_os = "windows"))
         .on_menu_event(|app, event| match event.id.as_ref() {
             "toggle" => toggle_window(app),
             "demo-badge" => {

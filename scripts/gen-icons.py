@@ -18,7 +18,10 @@ Outputs, under src-tauri/icons/:
     tray/badge-{16,32}       unread, Google's own dot variant
     tray/offline-{16,32}     desaturated: shown before the page reports in
     tray/count-16/{1..9,9plus}   Windows taskbar overlay icons
-    tray/count-32/{1..9,9plus}   Linux tray, which has no dock badge to use
+
+The tray itself only ever shows idle/unread/offline -- the count lives in the
+window title and, on macOS/Windows, the dock badge or taskbar overlay. A digit
+rendered at 16-32px is hard to read and duplicates the title.
 
 Only re-run this when Google changes the artwork; the output is committed.
 """
@@ -116,18 +119,6 @@ def main():
     for label in LABELS:
         img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
         draw_bubble(img, label, 8, 8, 8, 13)
-        img.save(d / f"{name_for(label)}.png")
-
-    # Linux tray: the idle mark plus a count bubble. Linux gets the number
-    # rather than just the dot because set_badge_count is a no-op there, so the
-    # tray is the only place the count can appear.
-    d = TRAY / "count-32"
-    d.mkdir(exist_ok=True)
-    base = idle[32]
-    for label in LABELS:
-        img = base.copy()
-        ImageDraw.Draw(img).ellipse([12, 12, 32, 32], fill=(0, 0, 0, 0))
-        draw_bubble(img, label, 22, 22, 9, 15)
         img.save(d / f"{name_for(label)}.png")
 
     print(f"wrote {len(list(TRAY.rglob('*.png')))} tray icons + source-1024.png")
