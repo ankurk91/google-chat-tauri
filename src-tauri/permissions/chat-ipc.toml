@@ -16,5 +16,6 @@ commands.allow = [
   "set_unread_count",
   "open_external_url",
   "show_notification",
+  "menu_action",
   "focus_main_window",
 ]

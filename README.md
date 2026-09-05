@@ -36,6 +36,18 @@ cargo test --manifest-path src-tauri/Cargo.toml
 `corepack pnpm` pins pnpm to the version in `packageManager` without touching a
 globally installed pnpm. Plain `pnpm` works too if yours is 12.x.
 
+### The scripts/ directory
+
+Neither script is needed to build or run the app, and nothing in `scripts/` ends
+up in the installer. They are developer tooling, and both need `python3`:
+
+- **`gen-icons.py`** regenerates `src-tauri/icons/` from Google Chat's own PWA
+  manifest. The output is committed, so this only needs re-running when Google
+  changes the artwork. Requires Pillow.
+- **`smoke-test.py`** drives the built binary through close-to-tray and window
+  geometry persistence, which need real X11 events and so cannot be unit tested.
+  Requires python-xlib, and Linux/X11.
+
 ## How it works
 
 There is no local frontend. The window is created in Rust

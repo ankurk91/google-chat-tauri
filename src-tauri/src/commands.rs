@@ -70,6 +70,35 @@ pub fn show_notification(app: AppHandle, id: u32, title: String, body: Option<St
     crate::features::notifications::show(&app, id, &title, body.as_deref());
 }
 
+/// Keyboard shortcuts, forwarded from `chat.js`.
+///
+/// GTK menu accelerators do not reach the app while focus is inside the
+/// WebKitGTK webview -- measured: zero menu events for Ctrl+Plus and friends --
+/// so the page has to forward them. Menu *clicks* still work normally.
+///
+/// The allow-list matters: this command is callable by a page we do not
+/// control, so it deliberately excludes anything destructive. "quit" and
+/// "sign-out" stay menu-click-only; everything here is something the page could
+/// already do to itself.
+#[tauri::command]
+pub fn menu_action(app: AppHandle, action: String) -> Result<(), String> {
+    const ALLOWED: [&str; 6] = [
+        "zoom-in",
+        "zoom-out",
+        "zoom-reset",
+        "back",
+        "forward",
+        "close-to-tray",
+    ];
+
+    if !ALLOWED.contains(&action.as_str()) {
+        return Err(format!("action not allowed from the page: {action}"));
+    }
+
+    crate::features::app_menu::handle(&app, &action);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn focus_main_window(app: AppHandle) {
     crate::features::window::show_and_focus(&app);

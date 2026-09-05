@@ -1,10 +1,14 @@
 mod commands;
+mod config;
 mod features;
 mod icons;
 mod inject;
 mod state;
 mod urls;
 
+use tauri::Manager;
+
+use config::Config;
 use state::AppState;
 
 pub fn run() {
@@ -42,21 +46,39 @@ pub fn run() {
                 .build(),
         )
         .manage(AppState::default())
+        .manage(Config::default())
         .invoke_handler(tauri::generate_handler![
             commands::page_log,
             commands::set_unread_count,
             commands::open_external_url,
             commands::show_notification,
+            commands::menu_action,
             commands::focus_main_window,
         ])
+        .on_menu_event(|app, event| features::app_menu::handle(app, event.id.as_ref()))
         .setup(|app| {
             let handle = app.handle();
+
+            let prefs = config::load(handle);
+            app.state::<Config>().update(|p| *p = prefs.clone());
+
             let window = features::window::create(handle)?;
 
+            app.set_menu(features::app_menu::build(handle)?)?;
             features::tray::create(handle)?;
             features::close_to_tray::attach(&window);
 
-            window.show()?;
+            if prefs.zoom != 1.0 {
+                let _ = window.set_zoom(prefs.zoom);
+            }
+
+            // `--hidden` is what the autostart entry passes; honour the
+            // preference too, so the app can start straight to the tray.
+            let hidden = prefs.start_hidden
+                || std::env::args().any(|a| a == "--hidden");
+            if !hidden {
+                window.show()?;
+            }
 
             Ok(())
         })

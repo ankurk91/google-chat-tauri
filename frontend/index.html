@@ -6,5 +6,11 @@
   directory, but this app never shows local content: the main window is created
   in Rust and navigates straight to the remote Google Chat URL.
   See src-tauri/src/features/window.rs
+
+  The background matches the window's background_color so there is no flash if
+  this is ever painted.
 -->
-<body style="background:#E8EAED"></body>
+<style>
+  html, body { margin: 0; height: 100%; background: #202124; }
+</style>
+<body></body>

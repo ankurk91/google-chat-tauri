@@ -21,7 +21,13 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         // Shown by the caller once setup is done, mirroring electron's
         // `show: false` + `ready-to-show`.
         .visible(false)
-        .zoom_hotkeys_enabled(true)
+        // Painted before the page renders. Electron used #E8EAED, but Chat
+        // follows the system theme and a light flash on a dark desktop is
+        // jarring, so use Google's dark surface colour instead.
+        .background_color(tauri::window::Color(0x20, 0x21, 0x24, 0xFF))
+        // Zoom is handled in chat.js instead, so the level can be persisted;
+        // wry's built-in hotkeys would bypass that.
+        .zoom_hotkeys_enabled(false)
         .user_agent(&crate::features::user_agent::spoofed())
         .initialization_script(crate::inject::SCRIPT)
         .on_navigation(crate::features::external_links::navigation_guard)

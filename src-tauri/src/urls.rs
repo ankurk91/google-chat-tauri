@@ -3,10 +3,37 @@
 
 pub const APP_URL: &str = "https://mail.google.com/chat/u/0";
 
-/// Used by the "Sign Out" menu item (P1).
-#[allow(dead_code)]
+/// Used by the "Sign Out" menu item.
 pub fn logout_url() -> String {
     format!("https://www.google.com/accounts/Logout?continue={APP_URL}")
+}
+
+/// Pre-filled "Report an Issue" link for the Help menu.
+pub fn issue_url() -> String {
+    format!(
+        "{}/issues/new?body={}",
+        env!("CARGO_PKG_REPOSITORY"),
+        urlencoding_lite(&format!(
+            "### Platform\n\n- App: {} {}\n- OS: {} {}\n",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS,
+            std::env::consts::ARCH,
+        ))
+    )
+}
+
+/// Minimal percent-encoding for the query string above. Not a general-purpose
+/// encoder -- it only has to survive our own fixed template.
+fn urlencoding_lite(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 /// Hosts a *new window / target=_blank* request may open in-app. Strict, and

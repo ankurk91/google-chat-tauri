@@ -156,27 +156,68 @@
     true
   );
 
-  /* ------------------------------------------------------------- Ctrl+F */
-  /* Ported from electron src/preload/searchShortcut.ts. Done entirely in JS
-   * rather than via a menu accelerator, which is not reliably delivered to the
-   * webview on Linux/GTK. */
+  /* --------------------------------------------------- keyboard shortcuts */
+  /* Every shortcut lives here rather than as a menu accelerator, because GTK
+   * menu accelerators are not delivered while focus is inside the WebKitGTK
+   * webview -- measured: Ctrl+Plus produced no menu event at all. Menu *clicks*
+   * still work; this is only about the keyboard.
+   *
+   * Ctrl+F is handled locally (it just focuses an input). The rest are
+   * forwarded to Rust, which owns zoom persistence and navigation. */
 
   function isVisible(el) {
     return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
   }
 
+  function focusSearch() {
+    var search = document.querySelector('input[name="q"]');
+    if (search && isVisible(search)) {
+      search.focus();
+      return true;
+    }
+    return false;
+  }
+
+  function shortcutFor(e) {
+    var mod = e.ctrlKey || e.metaKey;
+    var key = String(e.key).toLowerCase();
+
+    if (mod && !e.altKey && !e.shiftKey) {
+      if (key === 'f') return 'search';
+      if (key === '=' || key === '+') return 'zoom-in';
+      if (key === '-' || key === '_') return 'zoom-out';
+      if (key === '0') return 'zoom-reset';
+      if (key === 'w') return 'close-to-tray';
+    }
+    // Ctrl+Shift+= is how "+" arrives on many layouts.
+    if (mod && e.shiftKey && !e.altKey && (key === '+' || key === '=')) return 'zoom-in';
+
+    if (e.altKey && !mod && !e.shiftKey) {
+      if (key === 'arrowleft') return 'back';
+      if (key === 'arrowright') return 'forward';
+    }
+    return null;
+  }
+
   document.addEventListener(
     'keydown',
     function (e) {
-      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
-      if (String(e.key).toLowerCase() !== 'f') return;
+      var action = shortcutFor(e);
+      if (!action) return;
 
-      var search = document.querySelector('input[name="q"]');
-      if (search && isVisible(search)) {
-        e.preventDefault();
-        e.stopPropagation();
-        search.focus();
+      if (action === 'search') {
+        // Only swallow the key if there is actually a search box to focus,
+        // so Chat's own find-in-page behaviour is not broken when there isn't.
+        if (focusSearch()) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
       }
+
+      e.preventDefault();
+      e.stopPropagation();
+      invoke('menu_action', { action: action })['catch'](ignore);
     },
     true
   );
