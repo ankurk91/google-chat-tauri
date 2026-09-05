@@ -27,6 +27,18 @@ url = "2"
 tauri-plugin-single-instance = "2.4"
 tauri-plugin-window-state = "2.4"
 
+# macOS/Windows notifications. The plugin handles the macOS bundle-id and the
+# Windows AUMID plumbing, which is the fiddly part of getting a toast to appear
+# under the right app name.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+tauri-plugin-notification = "2"
+
+# Linux goes direct to notify-rust instead, because the plugin exposes no way to
+# learn that a notification was clicked -- its action/listener API is documented
+# as mobile-only. Talking to the freedesktop daemon ourselves gets that back.
+[target.'cfg(target_os = "linux")'.dependencies]
+notify-rust = "4"
+
 [features]
 default = []
 # `pnpm tauri dev` enables devtools automatically; this is for release debugging.

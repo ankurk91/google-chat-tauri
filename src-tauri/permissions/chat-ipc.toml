@@ -15,5 +15,6 @@ commands.allow = [
   "page_log",
   "set_unread_count",
   "open_external_url",
+  "show_notification",
   "focus_main_window",
 ]

@@ -19,6 +19,13 @@ pub fn run() {
         }));
     }
 
+    // Only macOS/Windows use the plugin; Linux talks to notify-rust directly so
+    // it can observe clicks. See features::notifications.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        builder = builder.plugin(tauri_plugin_notification::init());
+    }
+
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(
@@ -39,6 +46,7 @@ pub fn run() {
             commands::page_log,
             commands::set_unread_count,
             commands::open_external_url,
+            commands::show_notification,
             commands::focus_main_window,
         ])
         .setup(|app| {

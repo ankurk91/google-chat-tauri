@@ -60,6 +60,16 @@ pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Backs the `window.Notification` shim in `chat.js`; see `features::notifications`.
+#[tauri::command]
+pub fn show_notification(app: AppHandle, id: u32, title: String, body: Option<String>) {
+    // Remote-controlled text: clamp it before handing it to the OS.
+    let title: String = title.chars().take(200).collect();
+    let body = body.map(|b| b.chars().take(500).collect::<String>());
+
+    crate::features::notifications::show(&app, id, &title, body.as_deref());
+}
+
 #[tauri::command]
 pub fn focus_main_window(app: AppHandle) {
     crate::features::window::show_and_focus(&app);

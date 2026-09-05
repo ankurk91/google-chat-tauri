@@ -181,45 +181,134 @@
     true
   );
 
-  /* ------------------------------------------------- notification probe (P0) */
-  /* Not the shim yet -- this only answers the open question of whether Chat
-   * still calls `new Notification()` or has moved to a service-worker push.
-   * The shim lands in P1 once we know. */
+  /* ------------------------------------------------------ notifications */
+  /* Replaces electron src/preload/overrideNotifications.ts.
+   *
+   * Electron only had to *wrap* window.Notification, because Chromium
+   * implements it. None of the three system webviews can be used directly:
+   * WebKitGTK denies permission (measured: requestPermission() -> "denied",
+   * because Tauri 2.11 cannot handle WebKitWebView::permission-request),
+   * WKWebView has no Notification API at all, and WebView2 drops notifications
+   * unless the host handles NotificationReceived. So this replaces the API
+   * wholesale and forwards to Rust.
+   *
+   * Reporting "granted" is what makes it work: Chat only ever asks the shim. */
 
-  if (window.Notification) {
-    var Native = window.Notification;
-    var Probe = function (title, options) {
-      log('info', 'Notification constructed: ' + title);
-      return new Native(title, options);
-    };
-    Probe.requestPermission = function (cb) {
-      log('info', 'Notification.requestPermission() called');
-      return Native.requestPermission(cb);
-    };
-    Object.defineProperty(Probe, 'permission', {
-      get: function () {
-        return Native.permission;
-      }
-    });
-    Probe.prototype = Native.prototype;
-    window.Notification = Probe;
-    log('info', 'Notification API present, permission=' + Native.permission);
-  } else {
-    log('info', 'Notification API ABSENT in this webview');
+  var notifySeq = 0;
+  var liveNotifications = Object.create(null);
+
+  // Deliberately an ES5 constructor: Chat calls it with `new`, and arrow
+  // functions cannot be constructed.
+  function GChatNotification(title, options) {
+    options = options || {};
+
+    this._id = ++notifySeq;
+    this._listeners = { click: [], close: [], show: [], error: [] };
+
+    this.title = String(title);
+    this.body = options.body || '';
+    this.icon = options.icon || '';
+    this.tag = options.tag || '';
+    this.data = options.data;
+    this.onclick = null;
+    this.onclose = null;
+    this.onshow = null;
+    this.onerror = null;
+
+    liveNotifications[this._id] = this;
+
+    invoke('show_notification', {
+      id: this._id,
+      title: this.title,
+      body: options.body || null
+    })['catch'](ignore);
   }
 
-  if (window.ServiceWorkerRegistration && ServiceWorkerRegistration.prototype.showNotification) {
-    var nativeShow = ServiceWorkerRegistration.prototype.showNotification;
-    ServiceWorkerRegistration.prototype.showNotification = function (title, options) {
-      log('info', 'SW showNotification: ' + title);
-      return nativeShow.apply(this, arguments);
+  GChatNotification.prototype.addEventListener = function (type, cb) {
+    if (this._listeners[type] && typeof cb === 'function') {
+      this._listeners[type].push(cb);
+    }
+  };
+
+  GChatNotification.prototype.removeEventListener = function (type, cb) {
+    var list = this._listeners[type];
+    if (!list) return;
+    var i = list.indexOf(cb);
+    if (i !== -1) list.splice(i, 1);
+  };
+
+  GChatNotification.prototype.close = function () {
+    delete liveNotifications[this._id];
+    this._dispatch('close');
+  };
+
+  GChatNotification.prototype._dispatch = function (type) {
+    var event = {
+      type: type,
+      target: this,
+      currentTarget: this,
+      preventDefault: function () {},
+      stopPropagation: function () {}
     };
+
+    var handler = this['on' + type];
+    if (typeof handler === 'function') {
+      try {
+        handler.call(this, event);
+      } catch (e) {
+        console.error('[gchat] notification on' + type + ' threw:', e);
+      }
+    }
+
+    var list = this._listeners[type] || [];
+    for (var i = 0; i < list.length; i++) {
+      try {
+        list[i].call(this, event);
+      } catch (e) {
+        console.error('[gchat] notification listener threw:', e);
+      }
+    }
+  };
+
+  GChatNotification.permission = 'granted';
+  GChatNotification.maxActions = 0;
+  GChatNotification.requestPermission = function (cb) {
+    if (typeof cb === 'function') cb('granted');
+    return Promise.resolve('granted');
+  };
+
+  window.Notification = GChatNotification;
+
+  // Chat may deliver notifications through a service worker rather than
+  // constructing them directly; route those to the same place.
+  if (window.ServiceWorkerRegistration && ServiceWorkerRegistration.prototype.showNotification) {
+    ServiceWorkerRegistration.prototype.showNotification = function (title, options) {
+      new GChatNotification(title, options);
+      return Promise.resolve();
+    };
+    ServiceWorkerRegistration.prototype.getNotifications = function () {
+      return Promise.resolve([]);
+    };
+  }
+
+  // Rust reports a click here (Linux only -- macOS/Windows have no such hook).
+  // Dispatching on the original object runs Google's own handler, which opens
+  // the conversation the notification was about.
+  function listenForActivation() {
+    var ev = window.__TAURI__ && window.__TAURI__.event;
+    if (!ev || !ev.listen) return;
+
+    ev.listen('notification-activated', function (msg) {
+      var n = liveNotifications[msg.payload];
+      if (n) n._dispatch('click');
+    })['catch'](ignore);
   }
 
   /* ------------------------------------------------------------------ boot */
 
   whenReady(function () {
     log('info', 'chat.js attached to ' + location.href);
+    listenForActivation();
     pollUnread();
     setInterval(pollUnread, POLL_MS);
   });

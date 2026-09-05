@@ -16,12 +16,18 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
 
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<_>> = vec![&toggle];
 
-    // Lets the three platform badge paths be exercised without waiting for a
-    // real message. Mirrors electron's "Demo Badge Count" troubleshooting item.
+    // Exercise the badge and notification paths without waiting for a real
+    // message. Mirrors electron's "Demo Badge Count" troubleshooting item.
     #[cfg(debug_assertions)]
     let demo = MenuItem::with_id(app, "demo-badge", "Demo Badge Count", true, None::<&str>)?;
     #[cfg(debug_assertions)]
-    items.push(&demo);
+    let test_notify =
+        MenuItem::with_id(app, "test-notification", "Test Notification", true, None::<&str>)?;
+    #[cfg(debug_assertions)]
+    {
+        items.push(&demo);
+        items.push(&test_notify);
+    }
 
     let separator = PredefinedMenuItem::separator(app)?;
     items.push(&separator);
@@ -45,6 +51,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                     % 12) as i64;
                 app.state::<AppState>().set_unread(n);
                 crate::features::badge::apply(app);
+            }
+            "test-notification" => {
+                crate::features::notifications::show(
+                    app,
+                    0,
+                    "Test Notification",
+                    Some("If you can see this, the notification path works."),
+                );
             }
             "quit" => {
                 // The page can block a graceful quit via onbeforeunload, so mark
