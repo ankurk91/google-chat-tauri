@@ -44,6 +44,10 @@ pub fn count_16(count: i64) -> &'static [u8] {
     COUNT_16[count_index(count)]
 }
 
+/// The app icon, for the About dialog. Not from `tray/` -- that artwork is
+/// sized for a 16-32px tray slot.
+pub const APP: &[u8] = include_bytes!("../icons/128x128.png");
+
 pub fn decode(bytes: &'static [u8]) -> tauri::Result<Image<'static>> {
     Image::from_bytes(bytes)
 }

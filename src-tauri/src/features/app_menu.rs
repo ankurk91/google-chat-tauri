@@ -102,6 +102,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .separator()
         .about(Some(AboutMetadata {
             name: Some("Google Chat".into()),
+            icon: crate::icons::decode(crate::icons::APP).ok(),
             version: Some(env!("CARGO_PKG_VERSION").into()),
             authors: Some(vec!["ankurk91".into()]),
             comments: Some("Unofficial desktop app for Google Chat.".into()),

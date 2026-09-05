@@ -40,15 +40,9 @@ pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
         return Err("main window is gone".into());
     };
 
-    let current_host = window
-        .url()
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_owned))
-        .unwrap_or_default();
+    eprintln!("[popup] request: {parsed}");
 
-    eprintln!("[popup] request: {parsed} (current host: {current_host})");
-
-    if crate::urls::should_open_externally(&parsed, &current_host) {
+    if crate::urls::should_open_externally(&parsed) {
         crate::features::external_links::open_in_browser(&app, parsed.as_str());
     } else {
         // Electron's `action: 'allow'` spawned a popup window. A second window

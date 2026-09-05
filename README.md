@@ -1,83 +1,96 @@
-# Google Chat (Tauri)
+# Google Chat
 
-Unofficial desktop app for [Google Chat](https://chat.google.com), built with
-[Tauri v2](https://v2.tauri.app). A port of
-[google-chat-electron](https://github.com/ankurk91/google-chat-electron).
+An unofficial desktop app for [Google Chat](https://chat.google.com) on Linux,
+macOS and Windows.
 
-Unlike the Electron original this uses the **host OS webview** (WebKitGTK on
-Linux, WKWebView on macOS, WebView2 on Windows) rather than bundling Chromium,
-so the installer is a few MB instead of ~180 MB.
+It puts Chat in a real window with a tray icon, an unread indicator and native
+desktop notifications, instead of a browser tab that gets lost among the others.
+The app uses your operating system's built-in web engine rather than shipping
+its own, so the Linux installer is about 2.5 MB.
 
-Installs alongside the Electron app — different binary name, bundle identifier
-and data directory — so you can run both while comparing.
+> Not affiliated with, endorsed by, or sponsored by Google. "Google Chat" and
+> the Chat logo are trademarks of Google LLC.
 
-## Status
+## Features
 
-Core wrapper works: window, sign-in, tray icon, unread counter, close-to-tray,
-window-state persistence, single-instance, external-link handling.
-Menus, preferences, autostart and desktop notifications are not done yet.
+- **Unread indicator** — a dot on the tray icon, the count in the window title,
+  and a badge on the macOS dock or Windows taskbar.
+- **Desktop notifications** — with sound. On Linux, clicking a notification
+  opens the conversation it came from.
+- **Lives in the tray** — closing the window hides it rather than quitting;
+  the app keeps running and keeps notifying.
+- **Remembers your window** — size, position and maximised state come back
+  where you left them.
+- **One instance** — launching again focuses the window you already have.
+- **Menu bar** — File, Edit, View, History and Help, with zoom that persists
+  between launches.
+- **Keyboard shortcuts** — `Ctrl+F` to search, `Ctrl` `+`/`-`/`0` to zoom,
+  `Alt+←`/`Alt+→` to go back and forward, `Ctrl+W` to hide to the tray.
+- **Links open in your browser** — a Docs, Sheets, Drive or Calendar link
+  someone shares opens in your real browser, with your extensions and your
+  other tabs. Only Chat itself stays in this window.
+- **Signs in normally** — including Google Workspace accounts, in any country.
 
-## Development
+The app does not collect analytics, does not phone home, and has no
+auto-updater.
 
-Prerequisites: Node 24+, Rust (stable), and on Debian/Ubuntu/Mint:
+## Install
+
+### Linux (Debian, Ubuntu, Linux Mint)
+
+Download the `.deb` from the
+[latest release](https://github.com/ankurk91/google-chat-tauri/releases) and:
 
 ```bash
-sudo apt install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
-  libayatana-appindicator3-dev patchelf file build-essential libssl-dev
+sudo dpkg -i google-chat_*_amd64.deb
 ```
+
+Then launch **Google Chat** from your applications menu.
+
+Dependencies (`libwebkit2gtk-4.1-0`, `libgtk-3-0`,
+`libayatana-appindicator3-1`) come from your distribution and are almost always
+already installed. If `dpkg` reports any as missing:
 
 ```bash
-corepack pnpm install
-corepack pnpm dev            # run
-corepack pnpm build:linux    # build a .deb
-cargo test --manifest-path src-tauri/Cargo.toml
+sudo apt --fix-broken install
 ```
 
-`corepack pnpm` pins pnpm to the version in `packageManager` without touching a
-globally installed pnpm. Plain `pnpm` works too if yours is 12.x.
+To uninstall:
 
-### The scripts/ directory
+```bash
+sudo apt remove google-chat
+```
 
-Neither script is needed to build or run the app, and nothing in `scripts/` ends
-up in the installer. They are developer tooling, and both need `python3`:
+### macOS and Windows
 
-- **`gen-icons.py`** regenerates `src-tauri/icons/` from Google Chat's own PWA
-  manifest. The output is committed, so this only needs re-running when Google
-  changes the artwork. Requires Pillow.
-- **`smoke-test.py`** drives the built binary through close-to-tray and window
-  geometry persistence, which need real X11 events and so cannot be unit tested.
-  Requires python-xlib, and Linux/X11.
-
-## How it works
-
-There is no local frontend. The window is created in Rust
-([`src-tauri/src/features/window.rs`](src-tauri/src/features/window.rs)) and
-points straight at Google's own web app, so the interesting parts are:
-
-- **[`src-tauri/src/inject/chat.js`](src-tauri/src/inject/chat.js)** — the whole
-  JS half of the app, injected into Google's page as a Tauri initialization
-  script (the equivalent of Electron's preload). Compiled into the binary with
-  `include_str!`; no bundler, no npm build step.
-- **[`src-tauri/permissions/chat-ipc.toml`](src-tauri/permissions/chat-ipc.toml)**
-  + **[`src-tauri/capabilities/remote-chat.json`](src-tauri/capabilities/remote-chat.json)**
-  — Tauri rejects `invoke` from a remote origin unless the command is named in
-  *both* an app permission and a capability with a matching `remote.urls`.
-  Everything `chat.js` can call is listed there, and nothing else.
-
-A Firefox user-agent is sent
-([`src-tauri/src/features/user_agent.rs`](src-tauri/src/features/user_agent.rs));
-Google serves a degraded experience to WebKitGTK's default Safari-on-Linux
-string. Override it with `GOOGLE_CHAT_UA` when debugging sign-in.
+Builds are produced but have had less testing than Linux. They are unsigned, so
+your system will warn you on first launch — on macOS, right-click the app and
+choose **Open**.
 
 ## Troubleshooting
 
-**Blank window on some GPUs** — a known WebKitGTK issue. Add to the `Exec=` line
-of the `.desktop` file, or export before launching:
+**The window is blank or black.** Some graphics drivers do not get on with the
+Linux web engine. Launch it once with rendering acceleration off to check:
 
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 google-chat-tauri
 ```
-WEBKIT_DISABLE_DMABUF_RENDERER=1
-```
+
+If that fixes it, make it permanent by adding the variable to the `Exec=` line
+in `~/.local/share/applications/`.
+
+**Notifications do not appear.** They come from your desktop's own notification
+service, so check Chat's in-app notification settings first
+(**⚙ Settings → Notifications**), then your desktop's Do Not Disturb.
+
+**Signed out unexpectedly, or sign-in loops.** Quit from the tray, remove
+`~/.local/share/com.ankurk91.google-chat-tauri`, and start again. That clears
+the app's stored session without touching your browser.
+
+## Contributing
+
+See [docs/Development.md](docs/Development.md) for how to build and run it.
 
 ## Licence
 
-GPL-3.0-only, as the original.
+[GPL-3.0-only](LICENSE.txt).
