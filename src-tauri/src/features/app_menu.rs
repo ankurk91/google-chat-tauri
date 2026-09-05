@@ -9,7 +9,7 @@
 //! must work reliably from inside the page -- Ctrl+F search being the one that
 //! matters -- is handled in `chat.js` instead.
 
-use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder};
+use tauri::menu::{AboutMetadata, CheckMenuItemBuilder, Menu, MenuItemBuilder, SubmenuBuilder};
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::config::{self, Config, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
@@ -97,6 +97,24 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         )
         .build()?;
 
+    // Checkbox state is read from the OS and the config file, not assumed:
+    // the user may have removed the autostart entry through their desktop's own
+    // startup-applications tool.
+    let prefs = app.state::<Config>().get();
+    let preferences = SubmenuBuilder::new(app, "Preferences")
+        .item(
+            &CheckMenuItemBuilder::with_id("pref-autostart", "Launch at Login")
+                .checked(crate::features::autostart::is_enabled(app))
+                .enabled(!cfg!(debug_assertions))
+                .build(app)?,
+        )
+        .item(
+            &CheckMenuItemBuilder::with_id("pref-start-hidden", "Start Hidden in Tray")
+                .checked(prefs.start_hidden)
+                .build(app)?,
+        )
+        .build()?;
+
     let help = SubmenuBuilder::new(app, "Help")
         .item(&MenuItemBuilder::with_id("report-issue", "Report an Issue").build(app)?)
         .separator()
@@ -112,7 +130,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         }))
         .build()?;
 
-    Menu::with_items(app, &[&file, &edit, &view, &history, &help])
+    Menu::with_items(app, &[&file, &edit, &view, &history, &preferences, &help])
 }
 
 pub fn handle(app: &AppHandle, id: &str) {
@@ -158,6 +176,20 @@ pub fn handle(app: &AppHandle, id: &str) {
             if let Ok(url) = crate::urls::APP_URL.parse() {
                 let _ = window.navigate(url);
             }
+        }
+
+        // A check item flips its own tick before the event arrives, but there is
+        // no reliable way to read that back -- `Menu::get` only searches
+        // top-level items, so a nested check item is never found. Toggling the
+        // stored value instead keeps the two in step, because the menu is built
+        // from this same state at startup.
+        "pref-autostart" => {
+            let enabling = !crate::features::autostart::is_enabled(app);
+            crate::features::autostart::set(app, enabling);
+        }
+        "pref-start-hidden" => {
+            let prefs = app.state::<Config>().update(|p| p.start_hidden = !p.start_hidden);
+            config::save(app, &prefs);
         }
 
         "report-issue" => {

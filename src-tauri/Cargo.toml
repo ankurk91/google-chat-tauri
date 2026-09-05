@@ -26,6 +26,7 @@ url = "2"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2.4"
 tauri-plugin-window-state = "2.4"
+tauri-plugin-autostart = "2.5"
 
 # macOS/Windows notifications. The plugin handles the macOS bundle-id and the
 # Windows AUMID plumbing, which is the fiddly part of getting a toast to appear

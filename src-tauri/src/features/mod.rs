@@ -1,4 +1,5 @@
 pub mod app_menu;
+pub mod autostart;
 pub mod badge;
 pub mod close_to_tray;
 pub mod external_links;

@@ -35,6 +35,10 @@ impl Default for Prefs {
 pub struct Config(Mutex<Prefs>);
 
 impl Config {
+    pub fn get(&self) -> Prefs {
+        self.0.lock().unwrap().clone()
+    }
+
     pub fn update(&self, f: impl FnOnce(&mut Prefs)) -> Prefs {
         let mut g = self.0.lock().unwrap();
         f(&mut g);

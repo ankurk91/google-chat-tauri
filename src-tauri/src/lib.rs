@@ -18,6 +18,13 @@ pub fn run() {
     // does any work. Ported from electron src/main/features/singleInstance.ts.
     #[cfg(desktop)]
     {
+        builder = builder.plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            // Start into the tray, not into a window thrown at the user
+            // mid-login. `--hidden` is honoured in setup below.
+            Some(vec!["--hidden"]),
+        ));
+
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // A second launch normally just means "show me the window".
             //

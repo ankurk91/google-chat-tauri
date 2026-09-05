@@ -22,8 +22,10 @@ its own, so the Linux installer is about 2.5 MB.
 - **Remembers your window** — size, position and maximised state come back
   where you left them.
 - **One instance** — launching again focuses the window you already have.
-- **Menu bar** — File, Edit, View, History and Help, with zoom that persists
-  between launches.
+- **Menu bar** — File, Edit, View, History, Preferences and Help, with zoom that
+  persists between launches.
+- **Start with your session** — optionally launch at login, straight into the
+  tray. Under **Preferences**.
 - **Keyboard shortcuts** — `Ctrl+F` to search, `Ctrl` `+`/`-`/`0` to zoom,
   `Alt+←`/`Alt+→` to go back and forward, `Ctrl+W` to hide to the tray.
 - **Links open in your browser** — a Docs, Sheets, Drive or Calendar link
