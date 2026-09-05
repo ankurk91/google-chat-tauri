@@ -166,7 +166,22 @@ python3 scripts/gen-icons.py
 corepack pnpm tauri icon src-tauri/icons/source-1024.png
 ```
 
+## CI
+
+`ci.yml` runs `cargo fmt --check`, `cargo clippy -D warnings`, the tests, and
+`node --check` on `chat.js` — the injected script has no build step, so nothing
+else would catch a syntax error before it reached the page.
+
+`release.yml` builds on tag push: deb + AppImage on ubuntu-22.04, a universal
+dmg on macOS, NSIS on Windows, into a draft release.
+
+Bundle targets are passed per platform with `--bundles` rather than read from
+`tauri.conf.json`, so a host can never emit something we do not ship — notably
+rpm. The Linux job pins **ubuntu-22.04**: building on 24.04 would raise the
+glibc floor to 2.39 and lock out Ubuntu 22.04 and Mint 21.
+
 ## Releasing
 
 Bump the version in `package.json`, `src-tauri/Cargo.toml` and
-`src-tauri/tauri.conf.json`, then tag. Builds are unsigned.
+`src-tauri/tauri.conf.json`, then push a `v*` tag. Builds are unsigned, so macOS
+needs right-click → Open and Windows shows a SmartScreen warning.

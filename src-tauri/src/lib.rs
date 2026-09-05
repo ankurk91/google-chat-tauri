@@ -79,6 +79,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -122,8 +123,7 @@ pub fn run() {
 
             // `--hidden` is what the autostart entry passes; honour the
             // preference too, so the app can start straight to the tray.
-            let hidden = prefs.start_hidden
-                || std::env::args().any(|a| a == "--hidden");
+            let hidden = prefs.start_hidden || std::env::args().any(|a| a == "--hidden");
             if !hidden {
                 window.show()?;
             }

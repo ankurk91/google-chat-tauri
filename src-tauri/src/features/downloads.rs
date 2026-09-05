@@ -23,13 +23,11 @@ pub fn handle<R: Runtime>(webview: Webview<R>, event: tauri::webview::DownloadEv
             *destination = unique_path(&dir, &name);
             log::info!("downloading {url} -> {}", destination.display());
         }
-        tauri::webview::DownloadEvent::Finished { url, path, success } => {
-            match (success, path) {
-                (true, Some(p)) => log::info!("downloaded {}", p.display()),
-                (true, None) => log::info!("downloaded {url}"),
-                (false, _) => log::warn!("download failed: {url}"),
-            }
-        }
+        tauri::webview::DownloadEvent::Finished { url, path, success } => match (success, path) {
+            (true, Some(p)) => log::info!("downloaded {}", p.display()),
+            (true, None) => log::info!("downloaded {url}"),
+            (false, _) => log::warn!("download failed: {url}"),
+        },
         _ => {}
     }
     true
@@ -50,8 +48,7 @@ fn file_name_for(proposed: &Path, url: &str) -> String {
         .ok()
         .and_then(|u| {
             u.path_segments()?
-                .filter(|s| !s.is_empty())
-                .next_back()
+                .rfind(|s| !s.is_empty())
                 .map(str::to_owned)
         })
         .unwrap_or_else(|| "download".to_owned())
@@ -87,12 +84,18 @@ mod tests {
 
     #[test]
     fn prefers_the_proposed_name() {
-        assert_eq!(file_name_for(Path::new("/tmp/report.pdf"), "https://x/y"), "report.pdf");
+        assert_eq!(
+            file_name_for(Path::new("/tmp/report.pdf"), "https://x/y"),
+            "report.pdf"
+        );
     }
 
     #[test]
     fn falls_back_to_the_url_and_strips_the_query() {
-        assert_eq!(file_name_for(Path::new(""), "https://x/a/photo.png?sz=2"), "photo.png");
+        assert_eq!(
+            file_name_for(Path::new(""), "https://x/a/photo.png?sz=2"),
+            "photo.png"
+        );
         assert_eq!(file_name_for(Path::new(""), "https://x/files/"), "files");
     }
 
@@ -100,7 +103,10 @@ mod tests {
     fn never_returns_a_nonsense_name() {
         // A URL with no path used to yield the scheme, "https:".
         assert_eq!(file_name_for(Path::new(""), "https://"), "download");
-        assert_eq!(file_name_for(Path::new(""), "https://example.com"), "download");
+        assert_eq!(
+            file_name_for(Path::new(""), "https://example.com"),
+            "download"
+        );
         assert_eq!(file_name_for(Path::new(""), "not a url"), "download");
     }
 

@@ -46,7 +46,8 @@
       "deb": {
         "section": "net",
         "priority": "optional",
-        "desktopTemplate": "deb/app.desktop"
+        "desktopTemplate": "deb/app.desktop",
+        "postRemoveScript": "deb/postrm.sh"
       },
       "appimage": {
         "bundleMediaFramework": true

@@ -121,6 +121,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&MenuItemBuilder::with_id("report-issue", "Report an Issue").build(app)?)
         .item(&MenuItemBuilder::with_id("show-logs", "Show Logs").build(app)?)
         .separator()
+        .item(&MenuItemBuilder::with_id("reset-app", "Reset App Data...").build(app)?)
+        .separator()
         .about(Some(AboutMetadata {
             name: Some("Google Chat".into()),
             icon: crate::icons::decode(crate::icons::APP).ok(),
@@ -191,7 +193,9 @@ pub fn handle(app: &AppHandle, id: &str) {
             crate::features::autostart::set(app, enabling);
         }
         "pref-start-hidden" => {
-            let prefs = app.state::<Config>().update(|p| p.start_hidden = !p.start_hidden);
+            let prefs = app
+                .state::<Config>()
+                .update(|p| p.start_hidden = !p.start_hidden);
             config::save(app, &prefs);
         }
 
@@ -212,6 +216,8 @@ pub fn handle(app: &AppHandle, id: &str) {
             Err(e) => log::error!("no log directory: {e}"),
         },
 
+        "reset-app" => reset_app_data(app),
+
         "report-issue" => {
             crate::features::external_links::open_in_browser(app, &crate::urls::issue_url());
         }
@@ -221,6 +227,53 @@ pub fn handle(app: &AppHandle, id: &str) {
 
         _ => {}
     }
+}
+
+/// Sign out, forget every preference, and start over.
+///
+/// The last-resort fix for a wedged session. Asks first, because it cannot be
+/// undone -- the user has to sign in again afterwards.
+fn reset_app_data(app: &AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+    let app = app.clone();
+    app.clone()
+        .dialog()
+        .message(
+            "You will be signed out and all settings will return to their \
+             defaults.\n\nThe app will restart.",
+        )
+        .title("Reset app data?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Reset".into(),
+            "Cancel".into(),
+        ))
+        .show(move |confirmed| {
+            if !confirmed {
+                return;
+            }
+
+            if let Some(window) = app.get_webview_window(MAIN) {
+                if let Err(e) = window.clear_all_browsing_data() {
+                    log::error!("failed to clear browsing data: {e}");
+                }
+            }
+
+            if let Ok(dir) = app.path().app_config_dir() {
+                let config = dir.join("config.json");
+                if let Err(e) = std::fs::remove_file(&config) {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        log::error!("failed to remove {}: {e}", config.display());
+                    }
+                }
+            }
+
+            log::info!("app data reset; restarting");
+            // Restart rather than exit: the point is to land back on a clean
+            // sign-in screen, not to leave the user with nothing running.
+            app.restart();
+        });
 }
 
 /// Apply a zoom change, clamp it, and remember it.

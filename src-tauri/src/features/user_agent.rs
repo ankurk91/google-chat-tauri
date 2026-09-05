@@ -28,5 +28,7 @@ pub fn spoofed() -> String {
         "X11; Ubuntu; Linux x86_64"
     };
 
-    format!("Mozilla/5.0 ({platform}; rv:{FIREFOX_MAJOR}.0) Gecko/20100101 Firefox/{FIREFOX_MAJOR}.0")
+    format!(
+        "Mozilla/5.0 ({platform}; rv:{FIREFOX_MAJOR}.0) Gecko/20100101 Firefox/{FIREFOX_MAJOR}.0"
+    )
 }

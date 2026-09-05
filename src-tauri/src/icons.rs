@@ -90,10 +90,11 @@ mod tests {
 
     #[test]
     fn every_embedded_icon_decodes() {
-        for bytes in [NORMAL_16, NORMAL_32, BADGE_16, BADGE_32, OFFLINE_16, OFFLINE_32] {
+        for bytes in [
+            NORMAL_16, NORMAL_32, BADGE_16, BADGE_32, OFFLINE_16, OFFLINE_32,
+        ] {
             assert!(decode(bytes).is_ok());
         }
-
     }
 
     #[test]

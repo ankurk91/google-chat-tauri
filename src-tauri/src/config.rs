@@ -47,7 +47,10 @@ impl Config {
 }
 
 fn path(app: &AppHandle) -> Option<std::path::PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("config.json"))
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("config.json"))
 }
 
 pub fn load(app: &AppHandle) -> Prefs {

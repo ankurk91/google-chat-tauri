@@ -62,7 +62,8 @@ sudo apt --fix-broken install
 To uninstall:
 
 ```bash
-sudo apt remove google-chat
+sudo apt remove google-chat          # keeps your session and settings
+sudo apt purge google-chat           # also removes them
 ```
 
 ### macOS and Windows

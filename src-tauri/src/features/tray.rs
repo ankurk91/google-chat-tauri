@@ -21,8 +21,13 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(debug_assertions)]
     let demo = MenuItem::with_id(app, "demo-badge", "Demo Badge Count", true, None::<&str>)?;
     #[cfg(debug_assertions)]
-    let test_notify =
-        MenuItem::with_id(app, "test-notification", "Test Notification", true, None::<&str>)?;
+    let test_notify = MenuItem::with_id(
+        app,
+        "test-notification",
+        "Test Notification",
+        true,
+        None::<&str>,
+    )?;
     #[cfg(debug_assertions)]
     {
         items.push(&demo);

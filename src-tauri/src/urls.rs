@@ -140,7 +140,9 @@ mod tests {
             "accounts.google.fr",
             "accounts.youtube.com",
         ] {
-            let u = format!("https://{host}/accounts/SetSID?continue=https://mail.google.com/chat/u/0/");
+            let u = format!(
+                "https://{host}/accounts/SetSID?continue=https://mail.google.com/chat/u/0/"
+            );
             assert!(!external(&u), "{host} must stay in-app for sign-in");
         }
     }
@@ -153,7 +155,10 @@ mod tests {
             "notaccounts.google.com",
             "accounts.googleXcom",
         ] {
-            assert!(external(&format!("https://{host}/")), "{host} must be external");
+            assert!(
+                external(&format!("https://{host}/")),
+                "{host} must be external"
+            );
         }
     }
 
