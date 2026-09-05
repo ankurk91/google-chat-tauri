@@ -1,5 +1,7 @@
 # Development
 
+For current project state and what is left, see [Handoff.md](Handoff.md).
+
 Built with [Tauri v2](https://v2.tauri.app): a Rust backend and the operating
 system's own web engine — WebKitGTK on Linux, WKWebView on macOS, WebView2 on
 Windows.

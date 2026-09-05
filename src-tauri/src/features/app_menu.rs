@@ -48,6 +48,9 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .select_all()
         .build()?;
 
+    // `mut` is only needed in debug builds, where the devtools item below
+    // reassigns this.
+    #[cfg_attr(not(debug_assertions), allow(unused_mut))]
     let mut view = SubmenuBuilder::new(app, "View")
         .item(
             &MenuItemBuilder::with_id("zoom-in", "Zoom In")
