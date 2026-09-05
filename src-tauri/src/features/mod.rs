@@ -5,6 +5,7 @@ pub mod close_to_tray;
 pub mod downloads;
 pub mod external_links;
 pub mod notifications;
+pub mod reset;
 pub mod tray;
 pub mod user_agent;
 pub mod window;

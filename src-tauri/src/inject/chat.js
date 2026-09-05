@@ -284,12 +284,54 @@
     }
   }
 
+  // What a notification carries, at `debug` -- so it is in a development log and
+  // never in a release one, where the level is `info`.
+  //
+  // Clicking a Chat notification only opens the conversation if something in
+  // here says which conversation it is, and Chat's own object carries no click
+  // handler, so this is the only way to find out what there is to work with.
+  // Values are reported only when they look like an id or a URL: a message body
+  // is not something to write to a log file.
+  var IDISH = /^[\w:@.\-\/?=&+%#]{1,160}$/;
+
+  function describe(n) {
+    var parts = ['notification created: id=' + n._id + ' source=' + n._source];
+    if (n.tag) parts.push('tag=' + (IDISH.test(n.tag) ? n.tag : '<text>'));
+
+    var data = n.data;
+    if (data && typeof data === 'object') {
+      for (var k in data) {
+        if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
+        var v = data[k];
+        var shown =
+          typeof v === 'string'
+            ? IDISH.test(v)
+              ? v
+              : '<text>'
+            : v === null || typeof v !== 'object'
+              ? String(v)
+              : Array.isArray(v)
+                ? '<array:' + v.length + '>'
+                : '<object:' + Object.keys(v).join('|') + '>';
+        parts.push('data.' + k + '=' + shown);
+      }
+    } else if (typeof data === 'string') {
+      parts.push('data=' + (IDISH.test(data) ? data : '<text>'));
+    }
+
+    log('debug', parts.join(' '));
+  }
+
   // Deliberately an ES5 constructor: Chat calls it with `new`, and arrow
   // functions cannot be constructed.
-  function GChatNotification(title, options) {
+  // `source` is ours: Chat calls this with two arguments, the service worker
+  // shim below passes a third. Which path a notification came through decides
+  // whether a click has anything to dispatch to.
+  function GChatNotification(title, options, source) {
     options = options || {};
 
     this._id = ++notifySeq;
+    this._source = source || 'page';
     this._listeners = { click: [], close: [], show: [], error: [] };
 
     this.title = String(title);
@@ -303,6 +345,7 @@
     this.onerror = null;
 
     rememberNotification(this);
+    describe(this);
 
     invoke('show_notification', {
       id: this._id,
@@ -329,7 +372,10 @@
     this._dispatch('close');
   };
 
+  // Returns how many handlers ran, which is the only way to tell a click that
+  // Chat acted on from one that went nowhere.
   GChatNotification.prototype._dispatch = function (type) {
+    var ran = 0;
     var event = {
       type: type,
       target: this,
@@ -340,6 +386,7 @@
 
     var handler = this['on' + type];
     if (typeof handler === 'function') {
+      ran++;
       try {
         handler.call(this, event);
       } catch (e) {
@@ -349,12 +396,15 @@
 
     var list = this._listeners[type] || [];
     for (var i = 0; i < list.length; i++) {
+      ran++;
       try {
         list[i].call(this, event);
       } catch (e) {
         console.error('[gchat] notification listener threw:', e);
       }
     }
+
+    return ran;
   };
 
   GChatNotification.permission = 'granted';
@@ -370,7 +420,7 @@
   // constructing them directly; route those to the same place.
   if (window.ServiceWorkerRegistration && ServiceWorkerRegistration.prototype.showNotification) {
     ServiceWorkerRegistration.prototype.showNotification = function (title, options) {
-      new GChatNotification(title, options);
+      new GChatNotification(title, options, 'sw');
       return Promise.resolve();
     };
     ServiceWorkerRegistration.prototype.getNotifications = function () {
@@ -378,17 +428,57 @@
     };
   }
 
+  // A notification created through the service worker registration has no
+  // handler on the object -- the page never sees the click, the worker's own
+  // `notificationclick` listener would, and that is out of reach from here. Any
+  // Chat link the payload carries is the next best thing.
+  var CHAT_LINK = /https:\/\/chat\.google\.com\/[^\s"']+/;
+  // Avatars and emoji come from the same host; navigating to one would be worse
+  // than doing nothing.
+  var IMAGE_LINK = /\.(png|jpe?g|gif|webp|svg|ico)($|[?#])/i;
+
+  function findChatLink(value, depth) {
+    if (value == null || depth > 4) return null;
+
+    if (typeof value === 'string') {
+      var m = value.match(CHAT_LINK);
+      return m && !IMAGE_LINK.test(m[0]) ? m[0] : null;
+    }
+    if (typeof value !== 'object') return null;
+
+    for (var k in value) {
+      if (!Object.prototype.hasOwnProperty.call(value, k)) continue;
+      var found = findChatLink(value[k], depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
   // Rust reports a click here (Linux only -- macOS/Windows have no such hook).
   // Dispatching on the original object runs Google's own handler, which opens
-  // the conversation the notification was about.
+  // the conversation the notification was about. Rust raises the window before
+  // sending this, because Chat's router does nothing while the page is hidden.
   function listenForActivation() {
     var ev = window.__TAURI__ && window.__TAURI__.event;
     if (!ev || !ev.listen) return;
 
     ev.listen('notification-activated', function (msg) {
       var n = liveNotifications[msg.payload];
-      log('info', 'notification activated: id=' + msg.payload + (n ? ' (dispatching click)' : ' (no live object)'));
-      if (n) n._dispatch('click');
+      if (!n) {
+        log('info', 'notification activated: id=' + msg.payload + ' (no live object)');
+        return;
+      }
+
+      var handlers = n._dispatch('click');
+      var link = handlers ? null : findChatLink(n.data, 0) || findChatLink(n.tag, 0);
+
+      log(
+        'info',
+        'notification activated: id=' + msg.payload + ' source=' + n._source +
+          ' handlers=' + handlers + (link ? ' link=' + link : '')
+      );
+
+      if (link) location.assign(link);
     })['catch'](ignore);
   }
 

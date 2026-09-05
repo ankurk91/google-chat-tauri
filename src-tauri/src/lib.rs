@@ -12,6 +12,12 @@ use config::Config;
 use state::AppState;
 
 pub fn run() {
+    let context = tauri::generate_context!();
+
+    // Before the builder: a pending reset deletes files that the log and window
+    // state plugins open during their setup. See features::reset.
+    features::reset::take_pending(&context.config().identifier);
+
     let mut builder = tauri::Builder::default();
 
     // Must be registered first so a second launch is short-circuited before it
@@ -32,14 +38,25 @@ pub fn run() {
             // plugin hands us the new process's argv: `google-chat-tauri
             // --test-notification` fires one without needing the tray menu,
             // which makes the notification path scriptable.
+            // Same trick for the reset path, which otherwise needs a human to
+            // answer a modal: `google-chat-tauri --test-reset`.
+            #[cfg(debug_assertions)]
+            if argv.iter().any(|a| a == "--test-reset") {
+                features::reset::perform(app);
+                return;
+            }
+
             #[cfg(debug_assertions)]
             if argv.iter().any(|a| a == "--test-notification") {
-                features::notifications::show(
-                    app,
-                    0,
-                    "Test Notification",
-                    Some("Click me to check the window comes back."),
-                );
+                features::notifications::show_test_from_page(app);
+                return;
+            }
+
+            // Clicking the popup itself cannot be scripted, so this stands in
+            // for it: `google-chat-tauri --test-activation`.
+            #[cfg(debug_assertions)]
+            if argv.iter().any(|a| a == "--test-activation") {
+                features::notifications::activate_last(app);
                 return;
             }
             let _ = &argv;
@@ -60,12 +77,15 @@ pub fn run() {
             // Without this, every diagnostic in the app goes to stderr, which
             // is nowhere at all once the app is launched from a desktop menu.
             tauri_plugin_log::Builder::new()
-                .target(tauri_plugin_log::Target::new(
-                    tauri_plugin_log::TargetKind::LogDir { file_name: None },
-                ))
-                .target(tauri_plugin_log::Target::new(
-                    tauri_plugin_log::TargetKind::Stdout,
-                ))
+                // `targets`, not two `target` calls: the builder starts with
+                // these same two, and adding them again writes every line to
+                // each of them twice.
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: None,
+                    }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                ])
                 .level(if cfg!(debug_assertions) {
                     log::LevelFilter::Debug
                 } else {
@@ -129,6 +149,6 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

@@ -18,9 +18,12 @@ pub fn page_log(level: String, message: String) {
     // Truncate: this is remote-controlled text.
     let msg: String = message.chars().take(500).collect();
     // The page is remote; log at its requested level but never above info.
+    // `debug` is honoured too, so the page can leave diagnostics that a release
+    // build -- which logs at info -- drops on the floor.
     match level.as_str() {
         "error" => log::error!("page: {msg}"),
         "warn" => log::warn!("page: {msg}"),
+        "debug" => log::debug!("page: {msg}"),
         _ => log::info!("page: {msg}"),
     }
 }
