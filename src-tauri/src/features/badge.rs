@@ -32,7 +32,9 @@ pub fn apply(app: &AppHandle) {
     let count = state.unread();
     let connected = state.is_connected();
 
-    update_tray(app, connected, count);
+    // The tray follows the favicon, which keeps working while the window is
+    // hidden; the count comes from the DOM, which does not.
+    update_tray(app, connected, state.has_unread());
 
     let Some(window) = app.get_webview_window(MAIN) else {
         return;
@@ -61,12 +63,12 @@ pub fn apply(app: &AppHandle) {
     }
 }
 
-fn update_tray(app: &AppHandle, connected: bool, count: i64) {
+fn update_tray(app: &AppHandle, connected: bool, has_unread: bool) {
     let Some(tray) = app.tray_by_id(crate::features::tray::ID) else {
         return;
     };
 
-    if let Ok(image) = icons::decode(icons::tray(connected, count)) {
+    if let Ok(image) = icons::decode(icons::tray(connected, has_unread)) {
         let _ = tray.set_icon(Some(image));
     }
 }

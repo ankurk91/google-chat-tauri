@@ -71,12 +71,12 @@ pub fn initial() -> &'static [u8] {
 /// itself lives in the window title, and in the dock badge (macOS) or taskbar
 /// overlay (Windows). A digit rendered into a 16-32px tray icon is hard to read
 /// and duplicates what the title already says.
-pub fn tray(connected: bool, count: i64) -> &'static [u8] {
+pub fn tray(connected: bool, has_unread: bool) -> &'static [u8] {
     if !connected {
         return initial();
     }
 
-    match (count > 0, SMALL) {
+    match (has_unread, SMALL) {
         (true, true) => BADGE_16,
         (true, false) => BADGE_32,
         (false, true) => NORMAL_16,
@@ -108,15 +108,14 @@ mod tests {
 
     #[test]
     fn tray_shows_muted_icon_until_the_page_reports_in() {
-        assert_eq!(tray(false, 0), initial());
-        assert_eq!(tray(false, 7), initial());
-        assert_ne!(tray(true, 0), initial());
+        assert_eq!(tray(false, false), initial());
+        assert_eq!(tray(false, true), initial());
+        assert_ne!(tray(true, false), initial());
     }
 
     #[test]
     fn tray_switches_to_the_dot_variant_when_unread() {
-        assert_eq!(tray(true, 0), if SMALL { NORMAL_16 } else { NORMAL_32 });
-        assert_eq!(tray(true, 1), if SMALL { BADGE_16 } else { BADGE_32 });
-        assert_eq!(tray(true, 99), if SMALL { BADGE_16 } else { BADGE_32 });
+        assert_eq!(tray(true, false), if SMALL { NORMAL_16 } else { NORMAL_32 });
+        assert_eq!(tray(true, true), if SMALL { BADGE_16 } else { BADGE_32 });
     }
 }

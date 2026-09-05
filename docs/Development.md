@@ -123,8 +123,11 @@ relevant code:
   instead.
 - **The Linux tray delivers no click events at all.** `tray-icon`'s GTK backend
   emits none, so the tray menu is the only way in. Windows toggles on click.
-- **Chat exposes no `<link rel="icon">`**, so the favicon cannot be used to
-  detect new messages. The unread count is the signal.
+- **Chat does not render its navigation while the window is hidden.** The DOM
+  the unread count scrapes simply is not there, so the count reads zero --
+  exactly when the tray is the only thing the user can see. The favicon is used
+  for the has-unread flag because it is driven by data rather than layout;
+  Google publishes `..._no_dot_` and `..._dot_` variants and swaps between them.
 
 ## Logs
 

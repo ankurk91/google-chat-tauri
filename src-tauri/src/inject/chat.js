@@ -88,12 +88,40 @@
     return total;
   }
 
-  var lastUnread = -1;
+  /* Google swaps the favicon between two published variants --
+   * "..._no_dot_64px.png" when everything is read and "..._dot_64px.png" when
+   * something is not. That is a far more dependable signal than the DOM:
+   *
+   *  - it survives the window being hidden to the tray, which is this app's
+   *    main use case. Chat does not render its navigation while the window is
+   *    unmapped, so the selectors below find nothing and the count silently
+   *    reads zero -- exactly when the tray is the only thing you can see.
+   *  - it does not depend on Google's internal markup staying still.
+   *
+   * The favicon only says whether there is anything unread, not how many, so
+   * both signals are reported: the favicon drives the tray, the count fills in
+   * the window title when the DOM is available. */
+
+  function readHasUnread() {
+    var link = document.querySelector('link[rel~="icon" i]');
+    var href = (link && link.href) || '';
+    if (!href) return null; // unknown -- do not overwrite what we last knew
+    return /_dot_/.test(href) && !/_no_dot_/.test(href);
+  }
+
+  var lastCount = -1;
+  var lastHasUnread = null;
+
   function pollUnread() {
     var count = readUnreadCount();
-    if (count === lastUnread) return;
-    lastUnread = count;
-    invoke('set_unread_count', { count: count })['catch'](ignore);
+    var hasUnread = readHasUnread();
+    if (hasUnread === null) hasUnread = lastHasUnread === null ? count > 0 : lastHasUnread;
+
+    if (count === lastCount && hasUnread === lastHasUnread) return;
+    lastCount = count;
+    lastHasUnread = hasUnread;
+
+    invoke('set_unread_count', { count: count, hasUnread: hasUnread })['catch'](ignore);
   }
 
   /* ------------------------------------------------------- external links */

@@ -26,9 +26,10 @@ pub fn page_log(level: String, message: String) {
 }
 
 #[tauri::command]
-pub fn set_unread_count(app: AppHandle, count: i64) {
+pub fn set_unread_count(app: AppHandle, count: i64, has_unread: bool) {
     let count = count.clamp(0, 9999);
-    if app.state::<AppState>().set_unread(count) {
+    log::debug!("unread: count={count} has_unread={has_unread}");
+    if app.state::<AppState>().set_unread(count, has_unread) {
         crate::features::badge::apply(&app);
     }
 }

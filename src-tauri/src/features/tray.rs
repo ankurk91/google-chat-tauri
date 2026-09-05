@@ -57,7 +57,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                     .map(|d| d.as_secs())
                     .unwrap_or(0)
                     % 12) as i64;
-                app.state::<AppState>().set_unread(n);
+                app.state::<AppState>().set_unread(n, n > 0);
                 crate::features::badge::apply(app);
             }
             "test-notification" => {
