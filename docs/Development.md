@@ -1,7 +1,5 @@
 # Development
 
-For current project state and what is left, see [Handoff.md](Handoff.md).
-
 Built with [Tauri v2](https://v2.tauri.app): a Rust backend and the operating
 system's own web engine — WebKitGTK on Linux, WKWebView on macOS, WebView2 on
 Windows.
@@ -274,6 +272,46 @@ unchanged.
 patches the whole GTK/WebKit stack — the AppDir passes 200 MB and the run takes
 well over fifteen minutes on a laptop. CI has the time; a laptop should not
 spend it.
+
+## Where this stands
+
+Everything planned works on Linux, verified on Linux Mint 22.3 / Cinnamon / X11:
+window and sign-in including Workspace accounts, the unread dot and title count,
+notifications with click-through, tray and close-to-tray, window geometry, single
+instance, the menu bar and zoom, launch-at-login and start-hidden, link policy,
+downloads, logging, Reset App Data, and deb packaging with purge cleanup. Both
+CI workflows are green and the release matrix builds all five bundles.
+
+What is left, in the order it matters:
+
+1. **macOS and Windows are unverified.** They build, and nothing has ever been
+   run there. Specifically unknown: the dock badge (macOS), the taskbar overlay
+   icon (Windows), whether notifications arrive at all, and tray left-click
+   toggle (Windows only).
+2. **Nothing CI builds has been launched.** A manual `release` run produces deb,
+   AppImage, dmg, .app and NSIS. None has been installed and started.
+3. **A notification click does not open the conversation.** It raises the window
+   and stops there, because Chat hangs no click handler on its notifications —
+   see the quirks above. Whether the payload names the conversation is still
+   open; `chat.js` logs what it carries at `debug`, so the next real message on
+   a debug build will say.
+4. **Attachment links open in the system browser.** Deliberate for now — it
+   works. `on_download` would keep them in-app: one line in `urls::is_in_app`.
+
+**Next up: check for updates.** Not Tauri's updater plugin — that signs and
+installs updates itself, and on Linux only ever updates an AppImage, never a
+deb. Ours is smaller: ask GitHub for the latest release, compare its tag against
+the app version, and if it is newer say so and offer to open the release page in
+the browser. At startup and hourly after, with a preference to turn it off. No
+signing key and no manifest, which is why `uploadUpdaterJson` is off in
+`release.yml`. The README's "no auto-updater" line wants rewording when this
+lands — it still will not update itself.
+
+**Deliberately not built:** auto-update that installs itself, offline detection,
+a spellchecker toggle (no Tauri API), and single-click tray toggle on Linux —
+the last would mean replacing Tauri's tray with a direct StatusNotifierItem
+backend, a parallel implementation judged not worth it. Left-click opens the
+menu, with Toggle first.
 
 ## The glib advisory
 
