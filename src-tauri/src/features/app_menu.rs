@@ -65,6 +65,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .build(app)?,
         )
         .separator()
+        .item(&MenuItemBuilder::with_id("copy-url", "Copy Current URL").build(app)?)
+        .separator()
         .fullscreen();
 
     // Only useful in a dev build; shipping it invites confusion.
@@ -117,6 +119,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     let help = SubmenuBuilder::new(app, "Help")
         .item(&MenuItemBuilder::with_id("report-issue", "Report an Issue").build(app)?)
+        .item(&MenuItemBuilder::with_id("show-logs", "Show Logs").build(app)?)
         .separator()
         .about(Some(AboutMetadata {
             name: Some("Google Chat".into()),
@@ -134,7 +137,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 }
 
 pub fn handle(app: &AppHandle, id: &str) {
-    eprintln!("[menu] {id}");
+    log::debug!("menu: {id}");
     let Some(window) = app.get_webview_window(MAIN) else {
         return;
     };
@@ -191,6 +194,23 @@ pub fn handle(app: &AppHandle, id: &str) {
             let prefs = app.state::<Config>().update(|p| p.start_hidden = !p.start_hidden);
             config::save(app, &prefs);
         }
+
+        "copy-url" => {
+            use tauri_plugin_clipboard_manager::ClipboardExt;
+            if let Ok(url) = window.url() {
+                if let Err(e) = app.clipboard().write_text(url.to_string()) {
+                    log::error!("failed to copy url: {e}");
+                }
+            }
+        }
+        "show-logs" => match app.path().app_log_dir() {
+            Ok(dir) => {
+                if let Err(e) = tauri_plugin_opener::reveal_item_in_dir(&dir) {
+                    log::error!("failed to reveal {}: {e}", dir.display());
+                }
+            }
+            Err(e) => log::error!("no log directory: {e}"),
+        },
 
         "report-issue" => {
             crate::features::external_links::open_in_browser(app, &crate::urls::issue_url());

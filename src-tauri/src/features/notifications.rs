@@ -42,9 +42,9 @@ pub fn show(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
 
 /// Tell the page a notification was clicked, and raise the window.
 fn activated(app: &AppHandle, id: u32) {
-    eprintln!("[notify] activated id={id}");
+    log::debug!("notification activated: id={id}");
     if let Err(e) = app.emit(ACTIVATED_EVENT, id) {
-        eprintln!("[notify] failed to emit activation: {e}");
+        log::error!("notification: failed to emit activation: {e}");
     }
     crate::features::window::show_and_focus(app);
 }
@@ -67,7 +67,7 @@ fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
 
     if !actions_enabled() {
         if let Err(e) = builder.show() {
-            eprintln!("[notify] failed to show notification: {e}");
+            log::error!("notification: failed to show notification: {e}");
         }
         return;
     }
@@ -77,7 +77,7 @@ fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
     let handle = match builder.show() {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("[notify] failed to show notification: {e}");
+            log::error!("notification: failed to show notification: {e}");
             return;
         }
     };
@@ -128,6 +128,6 @@ fn show_via_plugin(app: &AppHandle, title: &str, body: Option<&str>) {
     }
 
     if let Err(e) = builder.show() {
-        eprintln!("[notify] failed to show notification: {e}");
+        log::error!("notification: failed to show notification: {e}");
     }
 }

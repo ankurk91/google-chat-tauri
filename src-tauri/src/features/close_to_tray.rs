@@ -29,7 +29,7 @@ pub fn attach(window: &WebviewWindow) {
         // which never reaches `RunEvent::Exit`, silently losing the window size
         // and position the user chose.
         if let Err(e) = app.save_window_state(StateFlags::all()) {
-            eprintln!("[window-state] failed to save on hide: {e}");
+            log::warn!("failed to save window state on hide: {e}");
         }
 
         #[cfg(target_os = "macos")]

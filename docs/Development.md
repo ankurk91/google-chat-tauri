@@ -126,6 +126,17 @@ relevant code:
 - **Chat exposes no `<link rel="icon">`**, so the favicon cannot be used to
   detect new messages. The unread count is the signal.
 
+## Logs
+
+`tauri-plugin-log` writes to the platform log directory
+(`~/.local/share/com.ankurk91.google-chat-tauri/logs/` on Linux), reachable from
+**Help → Show Logs**. Debug builds log at `debug`, release at `info`; `tao` and
+`wry` are capped at `warn` because they are chatty.
+
+Use `log::{debug,info,warn,error}` rather than `eprintln!` — stderr goes nowhere
+once the app is launched from a desktop menu, which is exactly when you need the
+diagnostics.
+
 ## Debug-only affordances
 
 In a debug build the tray gains **Demo Badge Count** and **Test Notification**,

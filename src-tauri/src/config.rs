@@ -59,7 +59,7 @@ pub fn load(app: &AppHandle) -> Prefs {
         Ok(s) => serde_json::from_str(&s).unwrap_or_else(|e| {
             // A corrupt file should not stop the app from starting; electron's
             // store did the same via `clearInvalidConfig`.
-            eprintln!("[config] ignoring unreadable {}: {e}", p.display());
+            log::error!("config: ignoring unreadable {}: {e}", p.display());
             Prefs::default()
         }),
         Err(_) => Prefs::default(),
@@ -76,10 +76,10 @@ pub fn save(app: &AppHandle, prefs: &Prefs) {
     match serde_json::to_string_pretty(prefs) {
         Ok(s) => {
             if let Err(e) = std::fs::write(&p, s) {
-                eprintln!("[config] failed to write {}: {e}", p.display());
+                log::error!("config: failed to write {}: {e}", p.display());
             }
         }
-        Err(e) => eprintln!("[config] failed to serialise: {e}"),
+        Err(e) => log::error!("config: failed to serialise: {e}"),
     }
 }
 

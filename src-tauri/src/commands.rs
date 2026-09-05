@@ -17,7 +17,12 @@ use crate::state::AppState;
 pub fn page_log(level: String, message: String) {
     // Truncate: this is remote-controlled text.
     let msg: String = message.chars().take(500).collect();
-    eprintln!("[chat.js/{level}] {msg}");
+    // The page is remote; log at its requested level but never above info.
+    match level.as_str() {
+        "error" => log::error!("page: {msg}"),
+        "warn" => log::warn!("page: {msg}"),
+        _ => log::info!("page: {msg}"),
+    }
 }
 
 #[tauri::command]
@@ -40,14 +45,14 @@ pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
         return Err("main window is gone".into());
     };
 
-    eprintln!("[popup] request: {parsed}");
+    log::debug!("link request: {parsed}");
 
     if crate::urls::should_open_externally(&parsed) {
         crate::features::external_links::open_in_browser(&app, parsed.as_str());
     } else {
         // Electron's `action: 'allow'` spawned a popup window. A second window
         // is not useful for Chat, so navigate the main webview instead.
-        eprintln!("[popup] -> navigating main window");
+        log::debug!("navigating main window");
         let _ = window.navigate(parsed);
     }
 

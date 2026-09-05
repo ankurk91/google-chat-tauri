@@ -21,9 +21,9 @@ use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 
 pub fn open_in_browser(app: &AppHandle, url: &str) {
-    eprintln!("[links] -> system browser: {url}");
+    log::info!("opening externally: {url}");
     if let Err(e) = app.opener().open_url(url, None::<&str>) {
-        eprintln!("[links] failed to open {url}: {e}");
+        log::error!("failed to open {url} externally: {e}");
     }
 }
 
@@ -40,7 +40,7 @@ pub fn navigation_guard(url: &url::Url) -> bool {
     // `about:blank` is routine (OAuth popups, form targets) and not worth
     // logging as a problem; anything else is worth seeing.
     if url.scheme() != "about" {
-        eprintln!("[nav] blocked scheme {}: {url}", url.scheme());
+        log::warn!("blocked navigation to scheme {}: {url}", url.scheme());
     }
     false
 }

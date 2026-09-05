@@ -22,7 +22,7 @@ pub fn is_enabled<R: Runtime>(app: &AppHandle<R>) -> bool {
 
 pub fn set<R: Runtime>(app: &AppHandle<R>, enabled: bool) {
     if cfg!(debug_assertions) {
-        eprintln!("[autostart] ignoring set({enabled}) in a debug build");
+        log::warn!("autostart: ignoring set({enabled}) in a debug build");
         return;
     }
 
@@ -34,6 +34,6 @@ pub fn set<R: Runtime>(app: &AppHandle<R>, enabled: bool) {
     };
 
     if let Err(e) = result {
-        eprintln!("[autostart] failed to set to {enabled}: {e}");
+        log::warn!("autostart: failed to set to {enabled}: {e}");
     }
 }

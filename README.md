@@ -71,6 +71,9 @@ choose **Open**.
 
 ## Troubleshooting
 
+If you need to report a problem, **Help → Show Logs** opens the folder
+containing the app's log file.
+
 **The window is blank or black.** Some graphics drivers do not get on with the
 Linux web engine. Launch it once with rendering acceleration off to check:
 
