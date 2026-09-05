@@ -225,7 +225,8 @@ corepack pnpm tauri icon src-tauri/icons/source-1024.png
 else would catch a syntax error before it reached the page.
 
 `release.yml` builds deb + AppImage on ubuntu-24.04, a universal dmg on macOS
-and an NSIS installer on Windows. A tag push puts them in a draft release; a
+and an NSIS installer on Windows. Only semver tags (`v1.2.3`, or
+`v1.2.3-beta.1`) start a release. A tag push puts them in a draft release; a
 manual run (**Actions → release → Run workflow**) builds the same bundles and
 leaves them as **workflow artifacts**, releasing nothing — that is the way to
 get something to test without cutting a version.
@@ -239,6 +240,17 @@ supported.
 Both workflows use a `concurrency` group. CI cancels a superseded run, releases
 never do — a half-uploaded draft is worse than a slow one. `ci.yml` is
 read-only; only the release job asks for `contents: write`.
+
+A manual run produces every bundle a release would contain. GitHub always zips
+workflow artifacts and names the zip after the artifact, so the names carry the
+real extension — `google-chat-tauri_1.0.0_linux-amd64.deb`, and so on — and the
+zip holds that file. Release assets are named the same way but are uploaded
+whole, extension and all, with no zip around them.
+
+Building on **ubuntu-24.04** is deliberate even though newer runners exist: a
+binary built against an older glibc runs on newer systems, never the other way
+round. Ubuntu 26.04 still ships `libwebkit2gtk-4.1`, so these bundles run there
+unchanged.
 
 **Do not build the AppImage locally.** `linuxdeploy`'s GTK plugin copies and
 patches the whole GTK/WebKit stack — the AppDir passes 200 MB and the run takes

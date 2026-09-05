@@ -15,8 +15,8 @@ its own, so the Linux installer is about 2.5 MB.
 
 - **Unread indicator** — a dot on the tray icon, the count in the window title,
   and a badge on the macOS dock or Windows taskbar.
-- **Desktop notifications** — with sound. On Linux, clicking one opens the
-  conversation it came from.
+- **Desktop notifications** — with sound. On Linux, clicking one brings the
+  window back.
 - **Lives in the tray** — closing the window hides it rather than quitting;
   the app keeps running and keeps notifying.
 - **Remembers your window** — size, position and maximised state come back
@@ -49,17 +49,23 @@ Download the `.deb` from the
 [latest release](https://github.com/ankurk91/google-chat-tauri/releases) and:
 
 ```bash
-sudo dpkg -i google-chat_*_amd64.deb
+sudo apt install ./google-chat-tauri_*_linux-amd64.deb
 ```
+
+The leading `./` matters — without a path, `apt` looks for a package by that
+name in your repositories. Installing this way pulls in the dependencies
+(`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1`) in the same
+step; they come from your distribution and are usually installed already.
 
 Then launch **Google Chat** from your applications menu.
 
-Dependencies (`libwebkit2gtk-4.1-0`, `libgtk-3-0`,
-`libayatana-appindicator3-1`) come from your distribution and are almost always
-already installed. If `dpkg` reports any as missing:
+Prefer something you can run without installing? The same release has an
+`.AppImage`. It is much larger, because it carries its own copy of the web
+engine instead of using yours:
 
 ```bash
-sudo apt --fix-broken install
+chmod +x google-chat-tauri_*_linux-amd64.AppImage
+./google-chat-tauri_*_linux-amd64.AppImage
 ```
 
 To uninstall:
@@ -70,6 +76,8 @@ sudo apt purge google-chat           # also removes them
 ```
 
 ### macOS and Windows
+
+The macOS dmg is universal — Apple silicon and Intel.
 
 Builds are produced but have had less testing than Linux. They are unsigned, so
 your system will warn you on first launch — on macOS, right-click the app and

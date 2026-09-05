@@ -32,8 +32,8 @@ except the items under "Not done" below.
 | Logging to disk, Show Logs | working |
 | Reset App Data | working; wipe + restart verified against a sandbox profile |
 | deb packaging + purge cleanup | working |
-| CI (fmt, clippy, tests, release matrix) | written, never executed |
-| AppImage | built by CI only; far too slow to bundle on a laptop |
+| CI (fmt, clippy, tests) | green on ubuntu-24.04, first run 2026-09-05 |
+| Release matrix (deb, AppImage, dmg, NSIS) | all three platforms build; bundles untested |
 
 Confirmed by hand on 2026-09-05 with real incoming messages: the popup appears
 while the window is hidden, the tray dot follows, starting hidden still receives
@@ -59,21 +59,33 @@ notifications, and a download hands off to the browser.
 3. **Attachment links still open in the system browser.** Tested 2026-09-05 and
    the browser hand-off works fine, so this stays as it is. `on_download` is
    implemented and would keep them in-app: one line in `urls::is_in_app`.
-4. **CI has never run.** `origin` exists and has commits, but everything since
-   `91eaa40` — the CI workflows included — is local only. Both workflows now
-   target **ubuntu-24.04**; 22.04 is not supported.
-5. **AppImage has never been built to completion.** Attempted locally on
-   2026-09-05 and abandoned: `linuxdeploy`'s GTK plugin was still copying
-   libraries after fifteen minutes, with the AppDir past 200 MB. It is a CI job
-   now — run `release` by hand and take the workflow artifacts. Expect ~100 MB,
-   since it bundles WebKitGTK.
+4. **Nothing CI builds has been run.** Both workflows went green on their first
+   run (2026-09-05, ubuntu-24.04), and a manual `release` run produced all five
+   bundles as workflow artifacts: deb 2.9 MB, AppImage 85.3 MB, universal dmg
+   5.4 MB and .app 5.0 MB, NSIS 1.7 MB. None has been installed or launched.
+5. **Never build the AppImage locally.** Attempted on 2026-09-05 and abandoned:
+   `linuxdeploy`'s GTK plugin was still copying libraries after fifteen minutes,
+   with the AppDir past 200 MB. Run `release` by hand and take the artifact.
+
+## Next up
+
+**Check for updates.** Not Tauri's updater plugin -- that signs and installs
+updates itself, and on Linux only works for AppImages, never a deb. Ours is
+smaller: ask GitHub for the latest release, compare its tag to the app version,
+and if it is newer, tell the user and offer to open the release page in their
+browser. At startup and hourly after that, with a preference to turn it off. No
+signing key, no manifest, nothing to add to CI -- which is why
+`uploadUpdaterJson` is off in `release.yml`. The README's "no auto-updater"
+line will want rewording when this lands, since it still will not update
+itself.
 
 ## Deliberately not built
 
-Auto-update, offline detection, spellchecker toggle (no Tauri API), and
-single-click tray toggle on Linux — the last would need replacing Tauri's tray
-with a direct StatusNotifierItem backend, which was judged not worth a parallel
-implementation. Left-click opens the menu, with Toggle first.
+Auto-update that installs itself, offline detection, spellchecker toggle (no
+Tauri API), and single-click tray toggle on Linux — the last would need
+replacing Tauri's tray with a direct StatusNotifierItem backend, which was
+judged not worth a parallel implementation. Left-click opens the menu, with
+Toggle first.
 
 ## Things that will bite you
 

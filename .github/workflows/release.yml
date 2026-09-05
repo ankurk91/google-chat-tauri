@@ -2,16 +2,19 @@ name: release
 
 on:
   push:
-    tags: ['v*']
+    # Semver tags only, so a stray tag cannot start a release. GitHub's filter
+    # syntax reads `+` as "one or more of the character before it".
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
   workflow_dispatch:
 
 # Only the build job may write, and only to publish the draft release.
 permissions:
   contents: read
 
-# Never cancel a release build: a half-uploaded draft is worse than a slow one.
 concurrency:
-  group: release-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -28,16 +31,18 @@ jobs:
           # not supported.
           - platform: ubuntu-24.04
             args: '--bundles deb,appimage'
+          # Universal: one dmg that runs on both Apple silicon and Intel.
           - platform: macos-latest
             args: '--target universal-apple-darwin --bundles app,dmg'
           - platform: windows-latest
             args: '--bundles nsis'
 
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v7
 
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
@@ -50,23 +55,27 @@ jobs:
 
       # Installs pnpm (version from package.json's "packageManager"), node, and
       # runs the install itself -- frozen lockfile, because CI is set.
-      - uses: pnpm/setup@v2
+      - name: Install pnpm and Node
+        uses: pnpm/setup@v2
         with:
           runtime: node@24
           cache: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
       # Bundles are selected per platform above rather than from
       # tauri.conf.json, so a host can never emit a target we do not ship
       # (notably rpm, which is deliberately not supported).
-      - uses: tauri-apps/tauri-action@v1
+      - name: Build and bundle
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -81,7 +90,13 @@ jobs:
           releaseDraft: true
           prerelease: false
           uploadWorkflowArtifacts: true
-          # There is no updater in this app, so there is nothing to sign or
-          # publish a manifest for.
+          # Workflow artifacts are always zipped by GitHub, and the zip is named
+          # after the artifact -- so the name has to carry the extension, or a
+          # download tells you nothing about what is inside it. Release assets
+          # keep their real extension and are named to match.
+          workflowArtifactNamePattern: '[mainBinaryName]_[version]_[platform]-[arch][_setup][ext]'
+          releaseAssetNamePattern: '[mainBinaryName]_[version]_[platform]-[arch][_setup][ext]'
+          # Tauri's own updater is not what this app will use, so there is no
+          # manifest to publish and no signing key to sign it with.
           uploadUpdaterJson: false
           args: ${{ matrix.args }}

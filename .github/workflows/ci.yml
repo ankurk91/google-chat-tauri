@@ -5,14 +5,11 @@ on:
     branches: [main]
   pull_request:
 
-# Nothing here writes anything back.
 permissions:
   contents: read
 
-# A newer push to the same branch or pull request makes an in-flight check
-# pointless, so let it go.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,7 +18,8 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v7
 
       - name: Install Linux dependencies
         run: |
@@ -31,11 +29,13 @@ jobs:
             libayatana-appindicator3-dev patchelf file \
             build-essential libssl-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
@@ -51,7 +51,8 @@ jobs:
       # chat.js has no build step, so nothing else would catch a syntax error
       # before it reaches the page. Only node itself is needed for that, hence
       # no install: there is nothing in node_modules this job uses.
-      - uses: pnpm/setup@v2
+      - name: Install Node
+        uses: pnpm/setup@v2
         with:
           runtime: node@24
           install: false
