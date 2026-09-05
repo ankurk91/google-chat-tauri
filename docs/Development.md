@@ -109,11 +109,13 @@ relevant code:
   and WebView2 drops notifications silently. `chat.js` replaces it entirely.
   Linux talks to `notify-rust` directly, because the notification plugin's
   click API is mobile-only.
-- **Cinnamon reports notifications as clicked when they expire.** It emits
-  `ActionInvoked("default")` with no user interaction, intermittently, ~5s after
-  showing. Nothing in the signal distinguishes it from a real click, so the
-  clickable action is off unless `GOOGLE_CHAT_NOTIFICATION_ACTIONS=1` is set.
-  `scripts/notification-test.py` guards the regression.
+- **A notification "activation" is indistinguishable from a real click.** If a
+  desktop's notification service invoked `default` on expiry it would raise the
+  window after every message; `GOOGLE_CHAT_NOTIFICATION_ACTIONS=0` disables the
+  action for that case. Cinnamon was wrongly suspected of this once — the
+  activations turned out to be a human clicking the test notifications, which is
+  why `scripts/notification-test.py` samples the pointer and reports
+  *inconclusive* rather than passing or failing when the mouse moves.
 - **GTK menu accelerators never reach the app** while focus is in the webview.
   All shortcuts are handled in `chat.js`; menu *clicks* work normally.
 - **`Window::set_badge_count` does nothing on most Linux desktops.** It goes

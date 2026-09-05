@@ -97,30 +97,24 @@ fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
 
 /// Whether to register a clickable "default" action on Linux notifications.
 ///
-/// Off by default, and that is a deliberate concession to a broken daemon.
-/// Clicking a notification *should* raise the window and open the conversation
-/// it came from -- but Cinnamon's notification service emits
-/// `ActionInvoked("default")` when a notification merely **expires**, with no
-/// user interaction at all (measured: the signal arrives ~5s after showing,
-/// matching the default timeout). `notify-rust` faithfully reports it, and
-/// nothing in the signal distinguishes it from a real click.
-///
-/// Honouring that would pop the window up a few seconds after every single
-/// message, which is far worse than not having click-through. So the action is
-/// only registered when explicitly asked for:
+/// On by default. The escape hatch exists because a notification service that
+/// reports "activated" when a notification merely expires would raise the
+/// window a few seconds after every message -- far more irritating than not
+/// having click-through at all. Cinnamon, GNOME and KDE all behave correctly;
+/// if some desktop does not, set:
 ///
 /// ```text
-/// GOOGLE_CHAT_NOTIFICATION_ACTIONS=1
+/// GOOGLE_CHAT_NOTIFICATION_ACTIONS=0
 /// ```
 ///
-/// Worth turning on if your desktop's notification service behaves correctly --
-/// GNOME and KDE are both reported to -- and worth revisiting as a default if
-/// this is ever fixed upstream.
+/// `scripts/notification-test.py` checks this by watching the pointer while it
+/// waits, so it can tell a real click from a self-activation without relying on
+/// anyone sitting still.
 #[cfg(target_os = "linux")]
 fn actions_enabled() -> bool {
-    matches!(
+    !matches!(
         std::env::var("GOOGLE_CHAT_NOTIFICATION_ACTIONS").as_deref(),
-        Ok("1") | Ok("true")
+        Ok("0") | Ok("false")
     )
 }
 
