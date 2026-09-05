@@ -5,6 +5,15 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Only the build job may write, and only to publish the draft release.
+permissions:
+  contents: read
+
+# Never cancel a release build: a half-uploaded draft is worse than a slow one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     permissions:
@@ -14,10 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 22.04, not latest: building on 24.04 pins glibc >= 2.39, which would
-          # exclude Ubuntu 22.04 and Linux Mint 21. If this runner is retired,
-          # move up and say so in the release notes.
-          - platform: ubuntu-22.04
+          # 24.04 sets the glibc floor at 2.39, so the deb and the AppImage
+          # need Ubuntu 24.04 / Linux Mint 22 or newer. 22.04 is deliberately
+          # not supported.
+          - platform: ubuntu-24.04
             args: '--bundles deb,appimage'
           - platform: macos-latest
             args: '--target universal-apple-darwin --bundles app,dmg'
@@ -28,7 +37,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
@@ -39,36 +48,40 @@ jobs:
             libayatana-appindicator3-dev patchelf file \
             build-essential libssl-dev
 
-      # Reads the version from package.json's "packageManager" field.
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      # Installs pnpm (version from package.json's "packageManager"), node, and
+      # runs the install itself -- frozen lockfile, because CI is set.
+      - uses: pnpm/setup@v2
         with:
-          node-version: 24
-          cache: pnpm
+          runtime: node@24
+          cache: true
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - uses: swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
-
-      - run: pnpm install --frozen-lockfile
 
       # Bundles are selected per platform above rather than from
       # tauri.conf.json, so a host can never emit a target we do not ship
       # (notably rpm, which is deliberately not supported).
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Google Chat ${{ github.ref_name }}'
+          # Run this by hand and nothing is released: with no tag there is no
+          # release to create, and the bundles land as workflow artifacts to
+          # download and try. A tag push does both.
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Google Chat {0}', github.ref_name) || '' }}
           releaseBody: |
             Builds are unsigned. macOS will need right-click > Open on first
             launch; Windows will show a SmartScreen warning.
           releaseDraft: true
           prerelease: false
+          uploadWorkflowArtifacts: true
+          # There is no updater in this app, so there is nothing to sign or
+          # publish a manifest for.
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}

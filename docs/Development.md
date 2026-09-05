@@ -224,13 +224,26 @@ corepack pnpm tauri icon src-tauri/icons/source-1024.png
 `node --check` on `chat.js` — the injected script has no build step, so nothing
 else would catch a syntax error before it reached the page.
 
-`release.yml` builds on tag push: deb + AppImage on ubuntu-22.04, a universal
-dmg on macOS, NSIS on Windows, into a draft release.
+`release.yml` builds deb + AppImage on ubuntu-24.04, a universal dmg on macOS
+and an NSIS installer on Windows. A tag push puts them in a draft release; a
+manual run (**Actions → release → Run workflow**) builds the same bundles and
+leaves them as **workflow artifacts**, releasing nothing — that is the way to
+get something to test without cutting a version.
 
 Bundle targets are passed per platform with `--bundles` rather than read from
 `tauri.conf.json`, so a host can never emit something we do not ship — notably
-rpm. The Linux job pins **ubuntu-22.04**: building on 24.04 would raise the
-glibc floor to 2.39 and lock out Ubuntu 22.04 and Mint 21.
+rpm. Building on **ubuntu-24.04** sets the glibc floor at 2.39, so the Linux
+bundles need Ubuntu 24.04 / Mint 22 or newer; 22.04 is deliberately not
+supported.
+
+Both workflows use a `concurrency` group. CI cancels a superseded run, releases
+never do — a half-uploaded draft is worse than a slow one. `ci.yml` is
+read-only; only the release job asks for `contents: write`.
+
+**Do not build the AppImage locally.** `linuxdeploy`'s GTK plugin copies and
+patches the whole GTK/WebKit stack — the AppDir passes 200 MB and the run takes
+well over fifteen minutes on a laptop. CI has the time; a laptop should not
+spend it.
 
 ## Releasing
 

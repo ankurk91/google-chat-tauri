@@ -5,13 +5,23 @@ on:
     branches: [main]
   pull_request:
 
+# Nothing here writes anything back.
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request makes an in-flight check
+# pointless, so let it go.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux dependencies
         run: |
@@ -25,7 +35,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - uses: swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
@@ -39,9 +49,12 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
       # chat.js has no build step, so nothing else would catch a syntax error
-      # before it reaches the page.
-      - uses: actions/setup-node@v4
+      # before it reaches the page. Only node itself is needed for that, hence
+      # no install: there is nothing in node_modules this job uses.
+      - uses: pnpm/setup@v2
         with:
-          node-version: 24
+          runtime: node@24
+          install: false
+
       - name: Check injected script parses
         run: node --check src-tauri/src/inject/chat.js

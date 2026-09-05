@@ -42,6 +42,9 @@ auto-updater.
 
 ### Linux (Debian, Ubuntu, Linux Mint)
 
+Built on Ubuntu 24.04, so it needs glibc 2.39 or newer — Ubuntu 24.04, Linux
+Mint 22, Debian 13 and up.
+
 Download the `.deb` from the
 [latest release](https://github.com/ankurk91/google-chat-tauri/releases) and:
 
