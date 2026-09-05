@@ -275,6 +275,20 @@ patches the whole GTK/WebKit stack — the AppDir passes 200 MB and the run take
 well over fifteen minutes on a laptop. CI has the time; a laptop should not
 spend it.
 
+## The glib advisory
+
+Dependabot reports GHSA-wrw7-89jp-8q8g against `glib` 0.18.5 — unsoundness in
+`VariantStrIter`'s iterator impls, first fixed in 0.20 — and cannot find an
+upgrade, because there is none. Tauri v2 draws its Linux window from GTK3, and
+the GTK3 Rust bindings ended at `gtk` 0.18.2, which requires `glib ^0.18`. The
+newest `tao` and `wry` still require `gtk ^0.18`, so no amount of updating moves
+it.
+
+Nothing here can reach the unsound code: `VariantStrIter` appears nowhere in the
+dependency tree outside glib's own source. So `.github/dependabot.yml` ignores
+`glib` and says why. Revisit if the GTK3 bindings move to glib 0.20, or if Tauri
+moves off GTK3.
+
 ## Releasing
 
 Bump the version in `package.json`, `src-tauri/Cargo.toml` and

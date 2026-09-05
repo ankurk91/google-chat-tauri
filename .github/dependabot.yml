@@ -1,0 +1,38 @@
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns: ['*']
+    ignore:
+      # GHSA-wrw7-89jp-8q8g: unsoundness in glib's VariantStrIter iterators,
+      # first fixed in glib 0.20. There is no version of this tree that can
+      # take it. Tauri v2 draws its Linux window from GTK3, whose Rust
+      # bindings (`gtk`) ended at 0.18.2 and require glib ^0.18 -- and the
+      # newest tao and wry still do. Nothing here can reach the unsound code
+      # either: `VariantStrIter` appears nowhere in the dependency tree
+      # outside glib's own source.
+      #
+      # Revisit if the GTK3 bindings ever move to glib 0.20, or if Tauri
+      # moves off GTK3. Until then Dependabot can only keep failing to find
+      # an upgrade that does not exist.
+      - dependency-name: glib
+
+  # Keeps the actions in the workflows current; nothing else watches them.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  # Only holds the Tauri CLI, but that is the thing that builds the bundles.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
