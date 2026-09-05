@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-chat",
+  "description": "IPC surface exposed to the remote Google Chat web page.",
+  "platforms": ["linux", "macOS", "windows"],
+  "windows": ["main"],
+  "remote": {
+    "urls": ["https://mail.google.com/*", "https://chat.google.com/*"]
+  },
+  "permissions": [
+    "chat-ipc",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

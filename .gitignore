@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+
+# Rust / Tauri
+/src-tauri/target/
+/src-tauri/gen/
+
+# generated app icons (regenerate with: pnpm tauri icon)
+/src-tauri/icons/source-1024.png

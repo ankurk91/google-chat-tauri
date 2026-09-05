@@ -1,0 +1,40 @@
+[package]
+name = "google-chat-tauri"
+version = "1.0.0"
+description = "Unofficial desktop app for Google Chat."
+authors = ["ankurk91"]
+license = "GPL-3.0-only"
+repository = "https://github.com/ankurk91/google-chat-tauri"
+edition = "2021"
+rust-version = "1.82"
+
+[lib]
+name = "app_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11", features = ["tray-icon", "image-png", "image-ico"] }
+tauri-plugin-opener = "2.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+
+# `cfg(desktop)` is a Tauri-defined cfg, not one cargo can select a target on.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2.4"
+tauri-plugin-window-state = "2.4"
+
+[features]
+default = []
+# `pnpm tauri dev` enables devtools automatically; this is for release debugging.
+devtools = ["tauri/devtools"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

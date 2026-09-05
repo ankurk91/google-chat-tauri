@@ -1,0 +1,19 @@
+# App-level ACL for the commands the embedded Google Chat page may call.
+#
+# This file is NOT optional. Tauri resolves our own #[tauri::command]s through
+# the ACL, so a bare command is rejected when invoked from a remote origin such
+# as https://mail.google.com -- every invoke() would fail. The capability in
+# capabilities/remote-chat.json references this permission by its bare
+# identifier (app permissions are not namespaced).
+#
+# Keep this list minimal: anything here is callable by a page we do not control.
+
+[[permission]]
+identifier = "chat-ipc"
+description = "Commands the embedded Google Chat page is allowed to call."
+commands.allow = [
+  "page_log",
+  "set_unread_count",
+  "open_external_url",
+  "focus_main_window",
+]

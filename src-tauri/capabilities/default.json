@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Local content. Unused in practice -- the app loads a remote URL -- but Tauri expects a default capability.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
