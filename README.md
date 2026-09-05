@@ -28,6 +28,8 @@ its own, so the Linux installer is about 2.5 MB.
   tray. Under **Preferences**.
 - **Keyboard shortcuts** — `Ctrl+F` to search, `Ctrl` `+`/`-`/`0` to zoom,
   `Alt+←`/`Alt+→` to go back and forward, `Ctrl+W` to hide to the tray.
+- **Downloads go to your Downloads folder** — saving an image keeps the file
+  locally instead of bouncing you to a browser.
 - **Links open in your browser** — a Docs, Sheets, Drive or Calendar link
   someone shares opens in your real browser, with your extensions and your
   other tabs. Only Chat itself stays in this window.

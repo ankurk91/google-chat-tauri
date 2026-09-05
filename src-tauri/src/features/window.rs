@@ -31,6 +31,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .user_agent(&crate::features::user_agent::spoofed())
         .initialization_script(crate::inject::SCRIPT)
         .on_navigation(crate::features::external_links::navigation_guard)
+        .on_download(crate::features::downloads::handle)
         .on_page_load(|webview, payload| {
             // Belt and braces. The initialization script is the real mechanism
             // -- it does run at document-start on remote URLs on all three
