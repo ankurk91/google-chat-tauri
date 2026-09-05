@@ -12,7 +12,12 @@ macro_rules! tray_png {
 
 pub const NORMAL_16: &[u8] = tray_png!("normal-16");
 pub const NORMAL_32: &[u8] = tray_png!("normal-32");
+// Used on macOS/Windows, where the count lives in the dock badge / taskbar
+// overlay and the tray only signals state. Linux uses the numbered `count-32`
+// icons instead, so these are dead code there.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub const BADGE_16: &[u8] = tray_png!("badge-16");
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub const BADGE_32: &[u8] = tray_png!("badge-32");
 pub const OFFLINE_16: &[u8] = tray_png!("offline-16");
 pub const OFFLINE_32: &[u8] = tray_png!("offline-32");
