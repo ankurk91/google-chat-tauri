@@ -97,8 +97,3 @@ pub fn menu_action(app: AppHandle, action: String) -> Result<(), String> {
     crate::features::app_menu::handle(&app, &action);
     Ok(())
 }
-
-#[tauri::command]
-pub fn focus_main_window(app: AppHandle) {
-    crate::features::window::show_and_focus(&app);
-}

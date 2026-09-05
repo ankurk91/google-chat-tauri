@@ -238,6 +238,24 @@
   var notifySeq = 0;
   var liveNotifications = Object.create(null);
 
+  // Notification objects are kept so a click can be dispatched back onto the
+  // one Chat created. Chat does not reliably call close(), and this app runs
+  // for days, so without a cap the map grows for every message ever received.
+  // Anything older than this is far past the point where clicking its
+  // notification is possible -- the desktop stopped showing it long ago.
+  var MAX_LIVE_NOTIFICATIONS = 50;
+
+  function rememberNotification(n) {
+    liveNotifications[n._id] = n;
+
+    var cutoff = n._id - MAX_LIVE_NOTIFICATIONS;
+    if (cutoff > 0 && liveNotifications[cutoff]) {
+      // Ids increment, so anything at or below the cutoff is stale. Only the
+      // boundary is checked each time; earlier ones were dropped on their turn.
+      delete liveNotifications[cutoff];
+    }
+  }
+
   // Deliberately an ES5 constructor: Chat calls it with `new`, and arrow
   // functions cannot be constructed.
   function GChatNotification(title, options) {
@@ -256,7 +274,7 @@
     this.onshow = null;
     this.onerror = null;
 
-    liveNotifications[this._id] = this;
+    rememberNotification(this);
 
     invoke('show_notification', {
       id: this._id,

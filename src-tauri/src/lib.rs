@@ -102,7 +102,6 @@ pub fn run() {
             commands::open_external_url,
             commands::show_notification,
             commands::menu_action,
-            commands::focus_main_window,
         ])
         .on_menu_event(|app, event| features::app_menu::handle(app, event.id.as_ref()))
         .setup(|app| {

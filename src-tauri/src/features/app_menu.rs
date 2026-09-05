@@ -140,7 +140,17 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
 pub fn handle(app: &AppHandle, id: &str) {
     log::debug!("menu: {id}");
+
+    // Quit is the user's escape hatch and must work even if the window has
+    // gone; everything else needs one, so look it up lazily.
+    if id == "quit" {
+        app.state::<AppState>().set_quitting();
+        app.exit(0);
+        return;
+    }
+
     let Some(window) = app.get_webview_window(MAIN) else {
+        log::warn!("menu action {id} ignored: no main window");
         return;
     };
 
@@ -161,11 +171,6 @@ pub fn handle(app: &AppHandle, id: &str) {
                 let _ = window.navigate(url);
             }
         }
-        "quit" => {
-            app.state::<AppState>().set_quitting();
-            app.exit(0);
-        }
-
         "zoom-in" => set_zoom(app, |z| z + ZOOM_STEP),
         "zoom-out" => set_zoom(app, |z| z - ZOOM_STEP),
         "zoom-reset" => set_zoom(app, |_| 1.0),
