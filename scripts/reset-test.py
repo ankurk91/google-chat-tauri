@@ -13,6 +13,9 @@ pointed at a temporary directory, which both `dirs` (the app) and Tauri honour,
 so your real signed-in profile is never touched. Refuses to run if an instance
 is already going, because single-instance is keyed on the session bus and the
 running app would answer instead of ours.
+
+Like `smoke-test.py`, this watches X11 and so pins the app to X11 -- XWayland on
+a Wayland session. See "The harnesses only see X11" in docs/Development.md.
 """
 
 import os
@@ -68,6 +71,10 @@ def main():
     env["XDG_CONFIG_HOME"] = str(sandbox / "config")
     env["XDG_DATA_HOME"] = str(sandbox / "data")
     env["XDG_CACHE_HOME"] = str(sandbox / "cache")
+    # `find_window` is python-xlib, which only sees X11 clients. On a Wayland
+    # session GTK would pick the Wayland backend and leave nothing to find, so
+    # the app is pinned to X11 (XWayland there) for the duration of the test.
+    env["GDK_BACKEND"] = "x11"
 
     config = sandbox / "config" / IDENT
     data = sandbox / "data" / IDENT

@@ -7,20 +7,32 @@ Run from the repo root, after `cargo build`:
 Covers close-to-tray, window-state persistence and coming back from minimised,
 none of which can be asserted from a unit test: they only happen in response to
 real X11 events. Always kills the app it starts, including on failure.
+
+**This observes X11, so it launches the app under X11** -- see `app_env`. On a
+Wayland session that means XWayland, and the X11 path is then the only one under
+test; the native Wayland path has to be checked by hand. See "The harnesses only
+see X11" in docs/Development.md.
+
+Everything happens in a sandbox profile, for the same reason `reset-test.py`
+uses one: the app's own preferences decide whether a window appears at all, and
+`start_hidden` on the developer's real profile would otherwise strand this in
+`find_window` with nothing to report but a timeout.
 """
 
 import json
 import os
 import pathlib
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 from Xlib import X, Xatom, display
 
 BIN = pathlib.Path("src-tauri/target/debug/google-chat-tauri").resolve()
-STATE = pathlib.Path.home() / ".config/com.ankurk91.google-chat-tauri/.window-state.json"
+IDENT = "com.ankurk91.google-chat-tauri"
 WM_CLASS = "google-chat-tauri"
 
 dpy = display.Display()
@@ -120,9 +132,26 @@ def minimize(win):
     dpy.sync()
 
 
-def launch():
+def app_env(sandbox):
+    """Environment for the app: a throwaway profile, forced onto X11.
+
+    `GDK_BACKEND=x11` is not a preference, it is what makes this file work.
+    python-xlib can only see X11 clients, and on a Wayland session GTK picks the
+    Wayland backend, so the app has no X11 window and every lookup here fails --
+    identically to the app never starting, which is the confusing part.
+    """
+    env = dict(os.environ)
+    env["XDG_CONFIG_HOME"] = str(sandbox / "config")
+    env["XDG_DATA_HOME"] = str(sandbox / "data")
+    env["XDG_CACHE_HOME"] = str(sandbox / "cache")
+    env["GDK_BACKEND"] = "x11"
+    return env
+
+
+def launch(env):
     return subprocess.Popen(
-        [str(BIN)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+        [str(BIN)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
 
 
@@ -141,11 +170,14 @@ def main():
         if not ok:
             failures.append(name)
 
-    STATE.unlink(missing_ok=True)
+    sandbox = pathlib.Path(tempfile.mkdtemp(prefix="smoke-test-"))
+    env = app_env(sandbox)
+    state = sandbox / "config" / IDENT / ".window-state.json"
+
     proc = None
     try:
-        print("[1/3] close-to-tray + geometry save")
-        proc = launch()
+        print(f"[1/3] close-to-tray + geometry save, sandbox at {sandbox}")
+        proc = launch(env)
         win = find_window()
         assert win, "app window never appeared"
 
@@ -159,15 +191,15 @@ def main():
 
         check("survives window close", proc.poll() is None, "process still alive")
         check("window is hidden", not is_viewable(win))
-        check("geometry saved on hide", STATE.exists(), str(STATE))
+        check("geometry saved on hide", state.exists(), str(state))
 
-        saved = json.loads(STATE.read_text()).get("main", {}) if STATE.exists() else {}
+        saved = json.loads(state.read_text()).get("main", {}) if state.exists() else {}
         stop(proc)
         proc = None
         time.sleep(2)
 
         print("[2/3] geometry restored on relaunch")
-        proc = launch()
+        proc = launch(env)
         win2 = find_window()
         assert win2, "app window never reappeared"
         time.sleep(3)
@@ -188,7 +220,7 @@ def main():
         time.sleep(2)
         check("minimised", wm_state(win2) == 3, f"WM_STATE is {wm_state(win2)}, wanted 3")
 
-        subprocess.run([str(BIN)], timeout=30, stdout=subprocess.DEVNULL,
+        subprocess.run([str(BIN)], env=env, timeout=30, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL)
         time.sleep(3)
         check("restored from minimised", wm_state(win2) == 1,
@@ -196,7 +228,8 @@ def main():
         check("focused after restore", has_focus(win2), "window came back unfocused")
     finally:
         stop(proc)
-        print("app stopped")
+        shutil.rmtree(sandbox, ignore_errors=True)
+        print("app stopped, sandbox removed")
 
     if failures:
         print(f"\n{len(failures)} FAILED: {', '.join(failures)}")
