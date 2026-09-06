@@ -1,4 +1,4 @@
-# Google Chat
+# Google Chat (Tauri)
 
 [![ci](https://github.com/ankurk91/google-chat-tauri/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ankurk91/google-chat-tauri/actions/workflows/ci.yml)
 [![release](https://github.com/ankurk91/google-chat-tauri/actions/workflows/release.yml/badge.svg)](https://github.com/ankurk91/google-chat-tauri/actions/workflows/release.yml)
@@ -35,7 +35,9 @@ shipping its own, so the Linux installer is about 3 MB.
   sign-in hop through your local `accounts.google.*` domain stays inside the window instead of stranding you on a login
   page.
 
-The app does not collect analytics, does not phone home, and has no auto-updater.
+The app does not collect analytics and does not update itself. It does ask GitHub once a day or so whether a newer
+release exists, and tells you if there is one — you download and install it yourself. That can be turned off in
+**Preferences**.
 
 **Sign-in that leaves Google is not supported** — an external identity provider, or SSO through Okta, Entra ID, Ping and
 the like. Those flows redirect to a host belonging to your organisation, and the app cannot know that address ahead of

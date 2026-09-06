@@ -43,6 +43,12 @@ first, or clicking a message notification, both bring it back directly. On an X1
 `chat.google.com` serves to a signed-out browser, so the app is not broken — its session is gone. Sign in again from
 that page. If you had just used **Help → Reset App Data**, that is exactly what it does: signs you out.
 
+**"No internet connection" when you are online.** The app tries to reach
+`chat.google.com` for about a minute after it starts and says so if nothing
+answers. A VPN, a proxy or a captive portal that blocks direct connections can
+produce this while a browser still works. It is only a message — the window
+loads Chat as soon as the connection is there.
+
 **Signed out unexpectedly, or sign-in loops.** Quit from the tray, remove
 `~/.local/share/com.ankurk91.google-chat-tauri`, and start again. That clears the app's stored session without touching
 your browser.

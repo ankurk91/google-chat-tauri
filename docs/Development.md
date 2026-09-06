@@ -42,6 +42,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 python3 scripts/smoke-test.py          # close-to-tray + window geometry, via real X11 events
 python3 scripts/notification-test.py   # notifications must not raise the window by themselves
 python3 scripts/reset-test.py          # Reset App Data really wipes the profile, in a sandbox
+node scripts/chatjs-test.js            # chat.js against a stand-in page: no browser, no signed-in session
 ```
 
 The three harnesses need the single-instance slot to themselves — stop `pnpm run dev` first, or the running app answers
@@ -80,6 +81,14 @@ src-tauri/
 ```
 
 ### The page-to-Rust bridge
+
+`scripts/chatjs-test.js` runs it in a `vm` context against fakes for `document`, `window` and the Tauri bridge, and
+reaches everything the way Chat does: `window.Notification`, `window.open`, and the listeners registered on `document`.
+It covers the notification shim, link interception and the shortcut table without a browser or a signed-in session, and
+CI runs it next to `node --check`. Two things it taught, both about the fakes rather than the app: a `vm` context has
+the ECMAScript intrinsics and no web APIs, so `URL` has to be handed in or `isCrossOrigin` throws into its own catch and
+calls every link same-origin; and a fake `location` needs `origin` as well as `href`, or every link looks external.
+
 
 `src-tauri/src/inject/chat.js` is the equivalent of a preload script. It is injected into Google's page as a Tauri
 initialization script and compiled into the binary with `include_str!`, which also makes cargo rebuild when you edit it.
@@ -141,7 +150,8 @@ Each of these was found by running the app, and each has a comment at the releva
 - **GTK menu accelerators never reach the app** while focus is in the webview. All shortcuts are handled in `chat.js`;
   menu *clicks* work normally.
 - **`Window::set_badge_count` works on Ubuntu and nowhere else in this family.** It goes through tao, which `dlopen`s
-  `libunity` and then returns early unless `unity_inspector_get_unity_running()` is true — that is, unless something owns
+  `libunity` and then returns early unless `unity_inspector_get_unity_running()` is true — that is, unless something
+  owns
   `com.canonical.Unity` on the session bus. Ubuntu Dock owns it and `libunity9` ships as a dependency of `nautilus`, so
   a stock Ubuntu has both halves; Cinnamon, XFCE, MATE and plain GNOME have neither and the call is silently inert.
   Verified on 26.04 by watching the bus while the count changed:
@@ -151,8 +161,8 @@ Each of these was found by running the app, and each has a comment at the releva
     "count" → int64 1    "count-visible" → boolean true
   ```
 
-  The desktop id is derived by Tauri from `productName`, so it matches the entry the deb installs only as long as the two
-  agree — rename one without the other and the badge quietly stops. The window title carries the count everywhere.
+  The desktop id is derived by Tauri from `productName`, so it matches the entry the deb installs only as long as the
+  two agree — rename one without the other and the badge quietly stops. The window title carries the count everywhere.
 - **The Linux tray delivers no click events at all.** `tray-icon`'s GTK backend emits none, so the tray menu is the only
   way in. Windows toggles on click.
 - **Resetting app data has to happen in the *next* process.** WebKit's storage cannot be deleted from under a live
@@ -173,11 +183,12 @@ Each of these was found by running the app, and each has a comment at the releva
   `window::show_and_focus`.
 - **On Wayland the app cannot raise itself, and this is not worked around.** An application on Wayland cannot *take*
   focus, only *receive* it: the compositor hands out an xdg-activation token in response to a user input event, and an
-  activation without one is declined. `set_focus` is tao's `present_with_time(GDK_CURRENT_TIME)`, which carries no token,
-  and neither tao nor Tauri expose the protocol. Measured on Ubuntu 26.04 / GNOME 50.1 / Wayland, from the tray's Toggle:
+  activation without one is declined. `set_focus` is tao's `present_with_time(GDK_CURRENT_TIME)`, which carries no
+  token, and neither tao nor Tauri expose the protocol. Measured on Ubuntu 26.04 / GNOME 50.1 / Wayland, from the tray's
+  Toggle:
 
   | window state | result |
-  |---|---|
+    |---|---|
   | minimised | raises and focuses — `show_and_focus` hides it first, so it comes back as a fresh map |
   | visible, unfocused | GNOME posts a *"Google Chat is ready"* notification; the user has to click that instead |
 
@@ -235,6 +246,34 @@ The page logs through the `page_log` command, which honours `error`, `warn` and
 Use `log::{debug,info,warn,error}` rather than `eprintln!` — stderr goes nowhere once the app is launched from a desktop
 menu, which is exactly when you need the diagnostics.
 
+## Updates and the network
+
+`features::updates` asks GitHub for the latest release, compares the tag against `CARGO_PKG_VERSION` with `semver`, and
+if it is newer offers to open the release page in the browser. It downloads nothing and installs nothing — that is the
+whole design. Tauri's own updater plugin was not used: it signs an artifact and swaps it in, which needs a key in CI and
+on Linux only ever works for an AppImage, never the deb most people install. That is also why `uploadUpdaterJson` is off
+in `release.yml`.
+
+One thread does the scheduling: thirty seconds after launch, then every twelve hours, sleeping in between. An automatic
+check is silent unless there is something new, and silent about a version it has already offered — `offered_version` in
+the config file — so nobody gets the same dialog twice a day until they update. **Help → Check for Updates** ignores
+that and always answers, because a manual check that appears to do nothing is indistinguishable from a broken one.
+**Preferences → Check for Updates Automatically** turns the scheduled half off; the thread stays, and skips the request.
+
+A private repository, one with no releases, and a typo in the URL are all `404` here, and all mean "nothing to offer".
+That is the response the endpoint gives today.
+
+The HTTP client is `ureq` with **native-tls**, so TLS comes from the platform — OpenSSL on Linux, which WebKitGTK
+already pulls in, Schannel on Windows, Security.framework on macOS. Naming the provider in the request config is not
+optional: ureq defaults to Rustls and *panics* mid-request if the default is not the feature that was compiled in.
+
+`features::connectivity` is the other half. The window points at a remote page, so with no route to the internet the
+webview shows a bare error page that says nothing about the app. One TCP connection to `chat.google.com:443` — no TLS,
+no HTTP, nothing a captive portal can answer misleadingly — decides it. Launching at login races the network, so it
+retries across about a minute (2, 4, 8, 15, 30 seconds; 84 seconds end to end, since every failed attempt also spends
+its connect timeout) and then tells the user once, through the desktop's own notification. It is deliberately not a
+monitor: nothing reloads the page or watches for the network coming back.
+
 ## Debug-only affordances
 
 In a debug build the tray gains **Demo Badge Count** and **Test Notification**, and a second launch doubles as a remote
@@ -246,7 +285,13 @@ cargo build --manifest-path src-tauri/Cargo.toml
 ./src-tauri/target/debug/google-chat-tauri --test-notification
 ./src-tauri/target/debug/google-chat-tauri --test-activation
 ./src-tauri/target/debug/google-chat-tauri --test-reset
+./src-tauri/target/debug/google-chat-tauri --test-update-check
 ```
+
+`--test-update-check` runs the check that would otherwise wait half a minute and then twelve hours, dialog and all.
+`GOOGLE_CHAT_PROBE_HOST=192.0.2.1:443` (TEST-NET-1, which never routes) makes the connectivity probe fail without
+touching the machine's network, which is how the offline notification is tested — also debug builds only, since an
+environment variable that can silently convince the app it is offline has no business in a release.
 
 `--test-notification` creates the notification *from inside the page*, through the `window.Notification` shim, so it
 lands in the shim's map exactly like one of Chat's own. `--test-activation` then stands in for the click the popup
@@ -283,14 +328,14 @@ release matrix builds all five bundles.
 
 Verified on two desktops, which between them cover both display servers:
 
-| | Ubuntu 26.04 / GNOME 50.1 / **Wayland** | Linux Mint 22.3 / Cinnamon / **X11** |
-|---|---|---|
-| tray, menu, close-to-tray | yes | yes |
-| notifications + click-through | yes | yes |
-| dock badge (`set_badge_count`) | **yes** — Ubuntu Dock owns `com.canonical.Unity` | no — nothing owns the name |
-| numbered tray icon + title count | yes | yes |
-| raise from tray Toggle | **only from minimised** — see the Wayland quirk | yes |
-| Reset App Data, geometry, single instance | yes | yes |
+|                                           | Ubuntu 26.04 / GNOME 50.1 / **Wayland**          | Linux Mint 22.3 / Cinnamon / **X11** |
+|-------------------------------------------|--------------------------------------------------|--------------------------------------|
+| tray, menu, close-to-tray                 | yes                                              | yes                                  |
+| notifications + click-through             | yes                                              | yes                                  |
+| dock badge (`set_badge_count`)            | **yes** — Ubuntu Dock owns `com.canonical.Unity` | no — nothing owns the name           |
+| numbered tray icon + title count          | yes                                              | yes                                  |
+| raise from tray Toggle                    | **only from minimised** — see the Wayland quirk  | yes                                  |
+| Reset App Data, geometry, single instance | yes                                              | yes                                  |
 
 Ubuntu is the primary target; Mint is the secondary one. The split above is a display-server difference rather than a
 distribution one, so read "Wayland" wherever it says Ubuntu.
@@ -310,15 +355,9 @@ What is left, in the order it matters:
 4. **Attachment links open in the system browser.** Deliberate for now — it works. `on_download` would keep them in-app:
    one line in `urls::is_in_app`.
 
-**Next up: check for updates.** Not Tauri's updater plugin — that signs and installs updates itself, and on Linux only
-ever updates an AppImage, never a deb. Ours is smaller: ask GitHub for the latest release, compare its tag against the
-app version, and if it is newer say so and offer to open the release page in the browser. At startup and hourly after,
-with a preference to turn it off. No signing key and no manifest, which is why `uploadUpdaterJson` is off in
-`release.yml`. The README's "no auto-updater" line wants rewording when this lands — it still will not update itself.
-
-**Deliberately not built:** auto-update that installs itself, offline detection, a spellchecker toggle (no Tauri API),
-and single-click tray toggle on Linux — the last would mean replacing Tauri's tray with a direct StatusNotifierItem
-backend, a parallel implementation judged not worth it. Left-click opens the menu, with Toggle first.
+**Deliberately not built:** auto-update that installs itself, a spellchecker toggle (no Tauri API), and single-click
+tray toggle on Linux — the last would mean replacing Tauri's tray with a direct StatusNotifierItem backend, a parallel
+implementation judged not worth it. Left-click opens the menu, with Toggle first.
 
 ## Releasing
 
