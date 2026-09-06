@@ -18,7 +18,14 @@ rendering acceleration off to check:
 WEBKIT_DISABLE_DMABUF_RENDERER=1 google-chat-tauri
 ```
 
-If that fixes it, make it permanent by adding the variable to the `Exec=` line in `~/.local/share/applications/`.
+If that fixes it, make it permanent. The `.deb` installs its launcher to `/usr/share/applications/`, which an update
+overwrites, so copy it somewhere that belongs to you first and edit the copy:
+
+```bash
+cp /usr/share/applications/'Google Chat.desktop' ~/.local/share/applications/
+```
+
+Then put `env WEBKIT_DISABLE_DMABUF_RENDERER=1` at the front of that copy's `Exec=` line.
 
 **Notifications do not appear.** They come from your desktop's own notification service, so check Chat's in-app
 notification settings first (**⚙ Settings → Notifications**), then your desktop's Do Not Disturb.

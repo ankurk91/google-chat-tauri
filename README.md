@@ -1,5 +1,10 @@
 # Google Chat (Tauri)
 
+<p align="center">
+  <img src=".github/banner.jpg" width="900"
+       alt="Google Chat for your desktop: tray icon, desktop notifications, native window, built with Tauri">
+</p>
+
 [![ci](https://github.com/ankurk91/google-chat-tauri/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ankurk91/google-chat-tauri/actions/workflows/ci.yml)
 [![release](https://github.com/ankurk91/google-chat-tauri/actions/workflows/release.yml/badge.svg)](https://github.com/ankurk91/google-chat-tauri/actions/workflows/release.yml)
 [![tauri](https://img.shields.io/badge/built%20with-Tauri%20v2-24C8DB?logo=tauri&logoColor=white)](https://v2.tauri.app)
@@ -23,7 +28,8 @@ shipping its own, so the Linux installer is about 3 MB.
 - **Remembers your window** — size, position and maximised state come back where you left them.
 - **One instance** — launching again focuses the window you already have.
 - **Menu bar** — File, Edit, View, History, Preferences and Help, with zoom that persists between launches.
-- **Start with your session** — optionally launch at login, straight into the tray. Under **Preferences**.
+- **Starts how you like** — optionally launch at login, and start hidden in the tray on any launch rather than opening a
+  window. Both under **Preferences**.
 - **Keyboard shortcuts** — `Ctrl+F` to search, `Ctrl` `+`/`-`/`0` to zoom,
   `Alt+←`/`Alt+→` to go back and forward, `Ctrl+W` to hide to the tray.
 - **Links open in your browser** — a Docs, Sheets, Drive or Calendar link someone shares opens in your real browser,
@@ -33,7 +39,11 @@ shipping its own, so the Linux installer is about 3 MB.
   to your Downloads folder.
 - **Signs in normally** — a personal Google account and a paid Google Workspace one both work, in any country: the
   sign-in hop through your local `accounts.google.*` domain stays inside the window instead of stranding you on a login
-  page.
+  page. **File → Sign Out** ends the session without touching your browser's.
+- **Says when it cannot reach Chat** — with no network at startup, a notification tells you, instead of leaving you
+  looking at a web engine error page with no explanation on it.
+- **A way back from a wedged session** — **Help → Reset App Data** signs you out, returns every preference to its
+  default and restarts the app clean. **Show Logs** and **Report an Issue** are next to it.
 
 The app does not collect analytics and does not update itself. It does ask GitHub once a day or so whether a newer
 release exists, and tells you if there is one — you download and install it yourself. That can be turned off in
@@ -77,8 +87,8 @@ sudo apt install ./google-chat-tauri_*_linux-amd64.deb
 ```
 
 The leading `./` matters — without a path, `apt` looks for a package by that name in your repositories. Installing this
-way pulls in the dependencies (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1`) in the same step; they
-come from your distribution and are usually installed already.
+way pulls in the dependencies (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1` and OpenSSL) in the
+same step; they come from your distribution and are usually installed already.
 
 Then launch **Google Chat** from your applications menu.
 
