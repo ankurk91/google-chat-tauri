@@ -44,14 +44,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # Only what the runner image lacks. build-essential, libssl-dev, patchelf
+      # and file all ship on ubuntu-24.04 already; listing them just invites apt
+      # to spend time upgrading them. If a future runner image drops one, the
+      # build breaks here rather than silently -- add it back at that point.
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
-            libayatana-appindicator3-dev patchelf file \
-            build-essential libssl-dev
+            libayatana-appindicator3-dev
 
       # Installs pnpm (version from package.json's "packageManager"), node, and
       # runs the install itself -- frozen lockfile, because CI is set.
