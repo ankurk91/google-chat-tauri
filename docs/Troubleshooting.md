@@ -30,6 +30,15 @@ as clicked when they expire. Turn off the clickable action:
 GOOGLE_CHAT_NOTIFICATION_ACTIONS=0 google-chat-tauri
 ```
 
+**Clicking a notification does not open that conversation.** It brings the app to the front and leaves you wherever you
+were. Google Chat does not tell the app which conversation a notification belongs to, and has no per-conversation
+address to jump to, so there is nothing to act on — this is a limitation of Chat rather than a setting you can change.
+
+**"Google Chat is ready" appears instead of the window (Wayland).** Using **Toggle** in the tray while the window is
+already open but behind something else produces a notification rather than the window. Wayland does not permit an
+application to raise itself, so your desktop offers the notification instead; click it to get the window. Minimising
+first, or clicking a message notification, both bring it back directly. On an X11 session this does not happen.
+
 **It opens a Google or Gmail marketing page instead of Chat.** That is what
 `chat.google.com` serves to a signed-out browser, so the app is not broken — its session is gone. Sign in again from
 that page. If you had just used **Help → Reset App Data**, that is exactly what it does: signs you out.

@@ -55,6 +55,15 @@ runtime, which is part of Windows 11 and is installed automatically by the insta
 The Linux bundles are built on Ubuntu 24.04, which sets the glibc floor; a binary built there runs on newer
 distributions but not older ones, so 22.04 and Mint 21 are not supported.
 
+On Linux the app is developed against Ubuntu/GNOME first and Linux Mint/Cinnamon second, and both X11 and Wayland are
+supported. Two differences are worth knowing before you file a bug:
+
+- **The dock counter is an Ubuntu feature.** Ubuntu shows the unread count on the dock icon; other desktops have no such
+  API and show it in the window title and on the tray icon instead. All three are driven by the same count.
+- **On Wayland, bringing the window back from the tray can take an extra click.** If the window is already open but
+  behind something else, Wayland does not let an application raise itself, so GNOME offers a *"Google Chat is ready"*
+  notification to click instead. Restoring from minimised, and clicking a message notification, both work normally.
+
 ## Install
 
 Everything below comes from the [latest release](https://github.com/ankurk91/google-chat-tauri/releases).
