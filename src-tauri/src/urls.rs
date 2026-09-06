@@ -8,6 +8,20 @@ pub fn logout_url() -> String {
     format!("https://www.google.com/accounts/Logout?continue={APP_URL}")
 }
 
+/// Where the update check asks what the newest release is.
+///
+/// Derived from `CARGO_PKG_REPOSITORY` for the same reason the issue URL is:
+/// the repository is named once, in `Cargo.toml`, and a fork or a rename does
+/// not leave a hard-coded owner behind pointing everyone at the original.
+pub fn latest_release_api() -> String {
+    let path = env!("CARGO_PKG_REPOSITORY")
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .trim_start_matches("https://github.com/");
+
+    format!("https://api.github.com/repos/{path}/releases/latest")
+}
+
 /// How long the pre-filled issue URL is allowed to get.
 ///
 /// GitHub itself accepts far more, but the request travels through whatever
@@ -244,6 +258,19 @@ mod tests {
     fn third_parties_go_to_the_browser() {
         assert!(external("https://example.com/thing"));
         assert!(external("https://github.com/ankurk91"));
+    }
+
+    #[test]
+    fn the_release_api_url_points_at_this_repository() {
+        let url = latest_release_api();
+        assert!(
+            url.starts_with("https://api.github.com/repos/"),
+            "not an api.github.com URL: {url}"
+        );
+        assert!(url.ends_with("/releases/latest"), "wrong endpoint: {url}");
+        // No scheme left in the middle: the owner/name pair, and nothing else.
+        assert_eq!(url.matches("https://").count(), 1, "{url}");
+        assert!(!url.contains(".git/"), "{url}");
     }
 
     #[test]

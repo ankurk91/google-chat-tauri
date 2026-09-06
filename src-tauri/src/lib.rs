@@ -52,6 +52,14 @@ pub fn run() {
                 return;
             }
 
+            // The update check normally waits half a minute and then twelve
+            // hours; this runs one immediately, dialog and all.
+            #[cfg(debug_assertions)]
+            if argv.iter().any(|a| a == "--test-update-check") {
+                features::updates::check_now(app);
+                return;
+            }
+
             // Clicking the popup itself cannot be scripted, so this stands in
             // for it: `google-chat-tauri --test-activation`.
             #[cfg(debug_assertions)]
@@ -154,6 +162,12 @@ pub fn run() {
             if !hidden {
                 window.show()?;
             }
+
+            // Both run on their own threads and return immediately: a probe
+            // that waits out a slow wifi association, and a check that sleeps
+            // between the twice-daily ones.
+            features::connectivity::check_at_startup(handle);
+            features::updates::start(handle);
 
             Ok(())
         })

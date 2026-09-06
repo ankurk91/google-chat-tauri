@@ -1,0 +1,335 @@
+//! Tell the user when a newer release exists. Nothing more.
+//!
+//! Not Tauri's updater plugin: that signs an artifact, downloads it and swaps
+//! it in, which needs a signing key in CI and on Linux only ever works for an
+//! AppImage -- never the deb most people here install. This asks GitHub what
+//! the latest release is, compares the tag with our own version, and if it is
+//! newer offers to open the release page in the browser. The user downloads and
+//! installs it themselves, exactly as they did the first time.
+//!
+//! The schedule is one thread that sleeps: once shortly after launch, then
+//! every twelve hours. A sleeping thread costs nothing, and there is only ever
+//! one of them -- `start` is called once, from `setup`.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+use serde::Deserialize;
+use tauri::{AppHandle, Manager};
+
+use crate::config::{self, Config};
+
+/// Twice a day. GitHub allows sixty unauthenticated calls an hour from one
+/// address; two a day is not worth a token.
+const INTERVAL: Duration = Duration::from_secs(12 * 60 * 60);
+
+/// Long enough for the window, the tray and the page to be up. The check is not
+/// what the first seconds of a launch are for.
+const STARTUP_DELAY: Duration = Duration::from_secs(30);
+
+const TIMEOUT: Duration = Duration::from_secs(15);
+
+/// GitHub rejects a request without one, and it is the polite thing to send.
+const USER_AGENT: &str = concat!("google-chat-tauri/", env!("CARGO_PKG_VERSION"));
+
+/// Guards against a second scheduler if `start` is ever called twice.
+static RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// The parts of a GitHub release this app has any use for.
+#[derive(Debug, Deserialize)]
+struct Release {
+    /// The version, as tagged: `v1.2.3`.
+    tag_name: String,
+    /// Where to send someone who wants the download.
+    html_url: String,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
+}
+
+/// What a check found. `Current` and `Available` are both successes.
+#[derive(Debug, PartialEq)]
+pub enum Outcome {
+    Current,
+    Available {
+        version: String,
+        url: String,
+    },
+    /// The repository has no releases yet, or none that are not drafts.
+    NoReleases,
+    Failed(String),
+}
+
+/// Start the twice-daily schedule. Returns immediately.
+pub fn start(app: &AppHandle) {
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        log::warn!("updates: scheduler already running");
+        return;
+    }
+
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(STARTUP_DELAY);
+
+        loop {
+            if app.state::<Config>().get().check_updates {
+                automatic_check(&app);
+            } else {
+                log::debug!("updates: automatic checks are switched off");
+            }
+
+            std::thread::sleep(INTERVAL);
+        }
+    });
+}
+
+/// The scheduled check: silent unless there is something new, and silent about
+/// a version it has already offered. Nobody wants the same dialog twice a day
+/// until they get round to updating.
+fn automatic_check(app: &AppHandle) {
+    match check() {
+        Outcome::Available { version, url } => {
+            let already_offered = app.state::<Config>().get().offered_version == version;
+            if already_offered {
+                log::info!("updates: {version} is available; already offered, staying quiet");
+                return;
+            }
+
+            let prefs = app
+                .state::<Config>()
+                .update(|prefs| prefs.offered_version = version.clone());
+            config::save(app, &prefs);
+
+            offer(app, &version, &url);
+        }
+        outcome => log::info!("updates: {outcome:?}"),
+    }
+}
+
+/// Help > Check for Updates. Says something whatever the answer is -- a manual
+/// check that appears to do nothing is indistinguishable from a broken one.
+pub fn check_now(app: &AppHandle) {
+    let app = app.clone();
+
+    // Off the calling thread: this is a menu handler, and the menu is on the
+    // thread that would otherwise be drawing the window.
+    std::thread::spawn(move || match check() {
+        Outcome::Available { version, url } => {
+            let prefs = app
+                .state::<Config>()
+                .update(|prefs| prefs.offered_version = version.clone());
+            config::save(&app, &prefs);
+
+            offer(&app, &version, &url);
+        }
+        Outcome::Current => {
+            tell(
+                &app,
+                "No updates",
+                &format!("You have the latest version ({}).", current()),
+            );
+        }
+        Outcome::NoReleases => {
+            tell(&app, "No updates", "There are no published releases yet.");
+        }
+        Outcome::Failed(why) => {
+            log::warn!("updates: check failed: {why}");
+            tell(
+                &app,
+                "Could not check for updates",
+                "GitHub could not be reached. Check your connection and try again.",
+            );
+        }
+    });
+}
+
+/// Ask GitHub for the latest release and compare it with our own version.
+///
+/// Blocking, so never call this on the main thread.
+fn check() -> Outcome {
+    let url = crate::urls::latest_release_api();
+    log::debug!("updates: asking {url}");
+
+    // The provider has to be named, not just compiled in: ureq defaults to
+    // Rustls and *panics* mid-request when the default is not the feature that
+    // was built. Measured -- "provider is Rustls but feature is not enabled".
+    let agent = ureq::Agent::config_builder()
+        .tls_config(
+            ureq::tls::TlsConfig::builder()
+                .provider(ureq::tls::TlsProvider::NativeTls)
+                .build(),
+        )
+        .timeout_global(Some(TIMEOUT))
+        .build()
+        .new_agent();
+
+    let response = agent
+        .get(&url)
+        .header("User-Agent", USER_AGENT)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .call();
+
+    let mut response = match response {
+        Ok(response) => response,
+        // A private repository, a repository with no releases at all, and a
+        // typo in the URL are all 404 here -- there is nothing to offer in any
+        // of those cases, and none of them is worth a dialog full of jargon.
+        Err(ureq::Error::StatusCode(404)) => return Outcome::NoReleases,
+        Err(e) => return Outcome::Failed(e.to_string()),
+    };
+
+    let release: Release = match response.body_mut().read_json() {
+        Ok(release) => release,
+        Err(e) => return Outcome::Failed(format!("unreadable release: {e}")),
+    };
+
+    if release.draft || release.prerelease {
+        log::debug!("updates: latest release is a draft or prerelease; ignoring");
+        return Outcome::NoReleases;
+    }
+
+    match compare(&release.tag_name, current()) {
+        Some(true) => Outcome::Available {
+            version: normalise(&release.tag_name).to_string(),
+            url: release.html_url,
+        },
+        Some(false) => Outcome::Current,
+        None => Outcome::Failed(format!("unreadable tag: {}", release.tag_name)),
+    }
+}
+
+/// Is `tag` a newer version than `running`? `None` if either is not a version.
+///
+/// Kept separate from the request so the comparison can be tested without one.
+fn compare(tag: &str, running: &str) -> Option<bool> {
+    let latest = semver::Version::parse(normalise(tag)).ok()?;
+    let running = semver::Version::parse(normalise(running)).ok()?;
+    Some(latest > running)
+}
+
+/// Release tags carry a leading `v`; `CARGO_PKG_VERSION` does not.
+fn normalise(version: &str) -> &str {
+    version.trim().trim_start_matches('v')
+}
+
+fn current() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+/// The offer itself: a dialog with somewhere to go.
+fn offer(app: &AppHandle, version: &str, url: &str) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+    log::info!("updates: {version} is available at {url}");
+
+    let app = app.clone();
+    let url = url.to_string();
+
+    app.clone()
+        .dialog()
+        .message(format!(
+            "Google Chat {version} is available. You have {}.\n\nThe download page \
+             opens in your browser; install it the same way you installed this one.",
+            current()
+        ))
+        .title("Update available")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Download".into(),
+            "Not now".into(),
+        ))
+        .show(move |download| {
+            if download {
+                crate::features::external_links::open_in_browser(&app, &url);
+            }
+        });
+}
+
+fn tell(app: &AppHandle, title: &str, message: &str) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+
+    app.dialog()
+        .message(message)
+        .title(title)
+        .buttons(MessageDialogButtons::Ok)
+        .show(|_| {});
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_higher_tag_is_an_update() {
+        assert_eq!(compare("v1.1.0", "1.0.0"), Some(true));
+        assert_eq!(compare("v2.0.0", "1.9.9"), Some(true));
+        assert_eq!(compare("1.0.1", "1.0.0"), Some(true));
+    }
+
+    #[test]
+    fn the_same_version_is_not_an_update() {
+        assert_eq!(compare("v1.0.0", "1.0.0"), Some(false));
+        // Tags in the wild carry the v inconsistently; both forms are the same
+        // version, and neither is an update over the other.
+        assert_eq!(compare("1.0.0", "v1.0.0"), Some(false));
+    }
+
+    #[test]
+    fn an_older_tag_is_not_an_update() {
+        assert_eq!(compare("v0.9.0", "1.0.0"), Some(false));
+        assert_eq!(compare("v1.0.0", "1.0.1"), Some(false));
+    }
+
+    #[test]
+    fn a_prerelease_is_older_than_the_release_it_precedes() {
+        // semver's own rule, and the one we want: 1.1.0-beta.1 must not be
+        // offered to someone already on 1.1.0.
+        assert_eq!(compare("v1.1.0-beta.1", "1.1.0"), Some(false));
+        assert_eq!(compare("v1.1.0-beta.1", "1.0.0"), Some(true));
+    }
+
+    #[test]
+    fn a_tag_that_is_not_a_version_is_not_guessed_at() {
+        assert_eq!(compare("latest", "1.0.0"), None);
+        assert_eq!(compare("v1", "1.0.0"), None);
+        assert_eq!(compare("", "1.0.0"), None);
+    }
+
+    #[test]
+    fn our_own_version_parses() {
+        // If this fails, every check reports Failed and nobody finds out until
+        // a release exists.
+        assert!(semver::Version::parse(current()).is_ok(), "{}", current());
+    }
+
+    #[test]
+    fn a_release_payload_is_read_the_way_github_sends_it() {
+        // Trimmed from the documented shape of GET /repos/{o}/{r}/releases/latest.
+        let body = r#"{
+            "url": "https://api.github.com/repos/ankurk91/google-chat-tauri/releases/1",
+            "html_url": "https://github.com/ankurk91/google-chat-tauri/releases/tag/v1.1.0",
+            "tag_name": "v1.1.0",
+            "name": "Google Chat v1.1.0",
+            "draft": false,
+            "prerelease": false,
+            "published_at": "2026-09-06T10:00:00Z",
+            "assets": [{"name": "google-chat-tauri_1.1.0_linux-amd64.deb", "size": 3014656}]
+        }"#;
+
+        let release: Release = serde_json::from_str(body).unwrap();
+        assert_eq!(release.tag_name, "v1.1.0");
+        assert!(release.html_url.ends_with("/tag/v1.1.0"));
+        assert!(!release.draft && !release.prerelease);
+        assert_eq!(compare(&release.tag_name, "1.0.0"), Some(true));
+    }
+
+    #[test]
+    fn draft_and_prerelease_default_to_false_when_absent() {
+        let release: Release =
+            serde_json::from_str(r#"{"tag_name":"v2.0.0","html_url":"https://example.test"}"#)
+                .unwrap();
+        assert!(!release.draft && !release.prerelease);
+    }
+}

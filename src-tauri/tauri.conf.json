@@ -46,6 +46,9 @@
       "deb": {
         "section": "net",
         "priority": "optional",
+        "depends": [
+          "libssl3t64 | libssl3"
+        ],
         "desktopTemplate": "deb/app.desktop",
         "postRemoveScript": "deb/postrm.sh"
       },

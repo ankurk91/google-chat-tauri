@@ -19,6 +19,12 @@ pub const ZOOM_STEP: f64 = 0.1;
 pub struct Prefs {
     pub zoom: f64,
     pub start_hidden: bool,
+    /// Ask GitHub twice a day whether there is a newer release.
+    pub check_updates: bool,
+    /// The last version the user was told about, so an automatic check does not
+    /// raise the same dialog every twelve hours until they get round to it. The
+    /// manual check ignores this.
+    pub offered_version: String,
 }
 
 impl Default for Prefs {
@@ -26,6 +32,8 @@ impl Default for Prefs {
         Self {
             zoom: 1.0,
             start_hidden: false,
+            check_updates: true,
+            offered_version: String::new(),
         }
     }
 }

@@ -118,9 +118,16 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .checked(prefs.start_hidden)
                 .build(app)?,
         )
+        .item(
+            &CheckMenuItemBuilder::with_id("pref-check-updates", "Check for Updates Automatically")
+                .checked(prefs.check_updates)
+                .build(app)?,
+        )
         .build()?;
 
     let help = SubmenuBuilder::new(app, "Help")
+        .item(&MenuItemBuilder::with_id("check-updates", "Check for Updates").build(app)?)
+        .separator()
         .item(&MenuItemBuilder::with_id("report-issue", "Report an Issue").build(app)?)
         .item(&MenuItemBuilder::with_id("show-logs", "Show Logs").build(app)?)
         .separator()
@@ -199,6 +206,18 @@ pub fn handle(app: &AppHandle, id: &str) {
         "pref-autostart" => {
             let enabling = !crate::features::autostart::is_enabled(app);
             crate::features::autostart::set(app, enabling);
+        }
+        "check-updates" => crate::features::updates::check_now(app),
+
+        "pref-check-updates" => {
+            let prefs = app
+                .state::<Config>()
+                .update(|p| p.check_updates = !p.check_updates);
+            config::save(app, &prefs);
+            log::info!(
+                "updates: automatic checks {}",
+                if prefs.check_updates { "on" } else { "off" }
+            );
         }
         "pref-start-hidden" => {
             let prefs = app

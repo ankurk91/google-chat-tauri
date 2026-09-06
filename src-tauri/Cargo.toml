@@ -6,7 +6,8 @@ authors = ["ankurk91"]
 license = "GPL-3.0-only"
 repository = "https://github.com/ankurk91/google-chat-tauri"
 edition = "2021"
-rust-version = "1.82"
+# The floor, not a preference: ureq 3.4 needs 1.85 and nothing here needs newer.
+rust-version = "1.85"
 
 [lib]
 name = "app_lib"
@@ -28,6 +29,13 @@ url = "2"
 # Resolves the app data directories before there is an AppHandle to ask.
 # The same version Tauri itself depends on, so it adds nothing to the build.
 dirs = "6"
+# Update checks: one small blocking HTTP call, twice a day. native-tls rather
+# than rustls so TLS comes from the platform -- OpenSSL on Linux, which
+# WebKitGTK already pulls in, Schannel on Windows, Security.framework on macOS.
+# That keeps the binary small and the trust store the user's own.
+ureq = { version = "3.2", default-features = false, features = ["native-tls", "json"] }
+# Comparing a release tag against our own version. Already in the tree via Tauri.
+semver = "1"
 
 # `cfg(desktop)` is a Tauri-defined cfg, not one cargo can select a target on.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
