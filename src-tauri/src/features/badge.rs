@@ -14,11 +14,25 @@
 //! * **Windows** -- `set_badge_count` is unsupported; the equivalent is a
 //!   taskbar *overlay icon*, so we swap in a pre-rendered numbered disc.
 //! * **Linux** -- `set_badge_count` routes through tao, which `dlopen`s
-//!   `libunity.so`. That is absent on most modern desktops (Cinnamon, XFCE,
-//!   MATE, Ubuntu 24.04 generally), where it silently does nothing. The real
-//!   indicators on Linux are the **numbered tray icon** and the **window title
-//!   suffix**; `set_badge_count` is still called best-effort for the KDE /
-//!   Unity / GNOME+dash-to-dock users where it does work.
+//!   `libunity.so` and then, crucially, does nothing at all unless
+//!   `unity_inspector_get_unity_running()` says Unity is running -- which means
+//!   the `com.canonical.Unity` name being owned on the session bus. That is the
+//!   whole story of where the dock badge works:
+//!
+//!   * **Ubuntu -- works.** Ubuntu Dock owns `com.canonical.Unity` for exactly
+//!     this purpose, and `libunity9` arrives as a dependency of `nautilus`, so
+//!     both halves are present on a stock install. Verified on 26.04 by
+//!     watching `com.canonical.Unity.LauncherEntry` on the bus: the app emits
+//!     `application://Google Chat.desktop` with `count`/`count-visible`, and
+//!     the id matches what the deb installs because Tauri derives it from
+//!     `productName`. Renaming the app in `tauri.conf.json` without renaming
+//!     the desktop entry would silently break it.
+//!   * **Cinnamon, XFCE, MATE, plain GNOME -- does nothing.** Nobody owns the
+//!     name, so tao returns before touching the entry.
+//!
+//!   The indicators that work everywhere are therefore the **numbered tray
+//!   icon** and the **window title suffix**; `set_badge_count` stays a
+//!   best-effort extra on top.
 
 use tauri::{AppHandle, Manager};
 

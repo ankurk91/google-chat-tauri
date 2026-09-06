@@ -44,6 +44,10 @@ python3 scripts/notification-test.py   # notifications must not raise the window
 python3 scripts/reset-test.py          # Reset App Data really wipes the profile, in a sandbox
 ```
 
+The three harnesses need the single-instance slot to themselves — stop `pnpm run dev` first, or the running app answers
+instead of theirs. They observe X11 and so run the app under X11 whatever the session is; see "The harnesses only see
+X11" below for what that does and does not prove.
+
 The app closes to the tray, so the window's ✕ will not stop it. Kill it properly, or `dev` will refuse to start a second
 copy:
 
@@ -112,7 +116,23 @@ Each of these was found by running the app, and each has a comment at the releva
   dispatching a click on them does nothing: the real handler is the service worker's own `notificationclick`, which the
   page cannot reach. Clicking therefore raises the window but does not open the conversation. `chat.js` logs what each
   notification carries at
-  `debug`, and falls back to any Chat link in the payload; what is missing is a payload that names the conversation.
+  `debug`, and falls back to any Chat link in the payload.
+- **There is no per-conversation URL to fall back to.** The link fallback above has nothing to find, and this is a
+  property of Chat rather than a gap in the payload. Measured on Ubuntu 26.04 with a debug build and real messages: the
+  payload carries a `tag` shaped `<per-message id>/<sender user id>`, whose second field is stable per sender and whose
+  first field changes with every message —
+
+  ```
+  tag=Xvr7Ku2rBq8/100361636183453074426
+  tag=_aaFZj4pHik/100361636183453074426     same person, three messages
+  tag=aS8iqASaHUg/100361636183453074426
+  ```
+
+  so it names the *sender*, not the conversation. And the document URL never moves off `chat.google.com/u/0/app/home`
+  while you walk between conversations — confirmed both in the app's inspector and in a stock browser, so it is not a
+  webview artefact. `location.assign` therefore has nothing to assign, which also explains why **Copy Current URL** can
+  only ever return the app root. Opening the right conversation would mean driving Chat's own in-page router, and the
+  service worker holds the only handle on it.
 - **A notification "activation" is indistinguishable from a real click.** If a desktop's notification service invoked
   `default` on expiry it would raise the window after every message; `GOOGLE_CHAT_NOTIFICATION_ACTIONS=0` disables the
   action for that case. Cinnamon was wrongly suspected of this once — the activations turned out to be a human clicking
@@ -120,8 +140,19 @@ Each of these was found by running the app, and each has a comment at the releva
   rather than passing or failing when the mouse moves.
 - **GTK menu accelerators never reach the app** while focus is in the webview. All shortcuts are handled in `chat.js`;
   menu *clicks* work normally.
-- **`Window::set_badge_count` does nothing on most Linux desktops.** It goes through tao, which `dlopen`s `libunity`.
-  The window title carries the count instead.
+- **`Window::set_badge_count` works on Ubuntu and nowhere else in this family.** It goes through tao, which `dlopen`s
+  `libunity` and then returns early unless `unity_inspector_get_unity_running()` is true — that is, unless something owns
+  `com.canonical.Unity` on the session bus. Ubuntu Dock owns it and `libunity9` ships as a dependency of `nautilus`, so
+  a stock Ubuntu has both halves; Cinnamon, XFCE, MATE and plain GNOME have neither and the call is silently inert.
+  Verified on 26.04 by watching the bus while the count changed:
+
+  ```
+  member=Update  string "application://Google Chat.desktop"
+    "count" → int64 1    "count-visible" → boolean true
+  ```
+
+  The desktop id is derived by Tauri from `productName`, so it matches the entry the deb installs only as long as the two
+  agree — rename one without the other and the badge quietly stops. The window title carries the count everywhere.
 - **The Linux tray delivers no click events at all.** `tray-icon`'s GTK backend emits none, so the tray menu is the only
   way in. Windows toggles on click.
 - **Resetting app data has to happen in the *next* process.** WebKit's storage cannot be deleted from under a live
@@ -140,6 +171,33 @@ Each of these was found by running the app, and each has a comment at the releva
   believes is minimised, learning otherwise only when the window manager confirms the deiconify, which is after the call
   returns — so the focus has to be asked for again once that lands. Both are handled in
   `window::show_and_focus`.
+- **On Wayland the app cannot raise itself, and this is not worked around.** An application on Wayland cannot *take*
+  focus, only *receive* it: the compositor hands out an xdg-activation token in response to a user input event, and an
+  activation without one is declined. `set_focus` is tao's `present_with_time(GDK_CURRENT_TIME)`, which carries no token,
+  and neither tao nor Tauri expose the protocol. Measured on Ubuntu 26.04 / GNOME 50.1 / Wayland, from the tray's Toggle:
+
+  | window state | result |
+  |---|---|
+  | minimised | raises and focuses — `show_and_focus` hides it first, so it comes back as a fresh map |
+  | visible, unfocused | GNOME posts a *"Google Chat is ready"* notification; the user has to click that instead |
+
+  Notification clicks are unaffected, because gnome-shell activates the app itself and passes a real token — which is
+  the path that matters most here.
+
+  It is tempting to widen the hide-then-show above to cover the unfocused case, since it demonstrably gets focus today.
+  Do not: it works only because compositors still treat a newly mapped window leniently, and that is precisely what they
+  are tightening — KWin is switching focus-stealing prevention on at a low level and making it "gradually stricter as
+  applications are being fixed". A trick that depends on the leniency being closed is not a fix, and it would cost real
+  behaviour meanwhile, because hiding a *visible* window makes Chat's page inert (see above) and flashes the user.
+  `request_user_attention` is no answer either — tao maps it to `gtk_window_set_urgency_hint`, and Wayland has no
+  urgency. The honest fix is xdg-activation support in tao; until then this is a documented limitation.
+- **The harnesses only see X11.** python-xlib can observe X11 clients and nothing else, and on a Wayland session GTK
+  picks the Wayland backend, so the app has no X11 window and every lookup fails *exactly as if the app never started* —
+  a 40-second timeout and `app window never appeared`. `smoke-test.py` and `reset-test.py` therefore pin the app with
+  `GDK_BACKEND=x11`, which on a Wayland session means XWayland; they consequently test the X11 path only, and the native
+  Wayland path has to be checked by hand. `smoke-test.py` also runs in a sandbox profile, because it is otherwise at the
+  mercy of the developer's own `start_hidden` — with that set there is no window to find and the failure looks identical
+  to the one above, which cost an hour once.
 - **A hidden window is not just invisible, it is inert.** Chat's router does nothing while the page is hidden, so a
   notification click has to raise the window *first* and let it paint before the page is told about the click -- hence
   the ordering and the pause in `notifications::activated`.
@@ -217,21 +275,39 @@ pnpm run tauri icon src-tauri/icons/source-1024.png
 
 ## Where this stands
 
-Everything planned works on Linux, verified on Linux Mint 22.3 / Cinnamon / X11:
+Everything planned works on Linux:
 window and sign-in including Workspace accounts, the unread dot and title count, notifications with click-through, tray
 and close-to-tray, window geometry, single instance, the menu bar and zoom, launch-at-login and start-hidden, link
 policy, downloads, logging, Reset App Data, and deb packaging with purge cleanup. Both CI workflows are green and the
 release matrix builds all five bundles.
+
+Verified on two desktops, which between them cover both display servers:
+
+| | Ubuntu 26.04 / GNOME 50.1 / **Wayland** | Linux Mint 22.3 / Cinnamon / **X11** |
+|---|---|---|
+| tray, menu, close-to-tray | yes | yes |
+| notifications + click-through | yes | yes |
+| dock badge (`set_badge_count`) | **yes** — Ubuntu Dock owns `com.canonical.Unity` | no — nothing owns the name |
+| numbered tray icon + title count | yes | yes |
+| raise from tray Toggle | **only from minimised** — see the Wayland quirk | yes |
+| Reset App Data, geometry, single instance | yes | yes |
+
+Ubuntu is the primary target; Mint is the secondary one. The split above is a display-server difference rather than a
+distribution one, so read "Wayland" wherever it says Ubuntu.
 
 What is left, in the order it matters:
 
 1. **macOS and Windows are unverified.** A manual `release` run produces the dmg, the .app and the NSIS installer, and
    nobody has ever installed or launched one. Specifically unknown: the dock badge (macOS), the taskbar overlay icon
    (Windows), whether notifications arrive at all, and tray left-click toggle (Windows only).
-2. **A notification click does not open the conversation.** It raises the window and stops there, because Chat hangs no
-   click handler on its notifications — see the quirks above. Whether the payload names the conversation is still open;
-   `chat.js` logs what it carries at `debug`, so the next real message on a debug build will say.
-3. **Attachment links open in the system browser.** Deliberate for now — it works. `on_download` would keep them in-app:
+2. **A notification click does not open the conversation, and cannot be made to.** It raises the window and stops there.
+   This was open pending a look at a real payload; that has now happened, and the answer is that Chat has no
+   per-conversation URL to navigate to and hangs no click handler — see the two quirks above. Anything better needs
+   Chat's own router, so treat this as closed rather than pending unless the service worker becomes reachable.
+3. **The window cannot raise itself on Wayland** when it is visible but unfocused, so tray → Toggle produces GNOME's
+   "window is ready" notification instead. Waiting on xdg-activation support in tao; deliberately not worked around, for
+   the reasons in the quirk above.
+4. **Attachment links open in the system browser.** Deliberate for now — it works. `on_download` would keep them in-app:
    one line in `urls::is_in_app`.
 
 **Next up: check for updates.** Not Tauri's updater plugin — that signs and installs updates itself, and on Linux only
