@@ -7,6 +7,7 @@ Linux, WKWebView on macOS, WebView2 on Windows.
 
 - **Node 24+** and **pnpm 12**
 - **Rust** stable, from [rustup](https://rustup.rs) — no `sudo` needed
+- **Python 3.12+** for `scripts/`, which is what they are developed against (3.12.3 at the time of writing)
 - On Debian/Ubuntu/Mint:
 
 ```bash
@@ -19,6 +20,14 @@ pnpm 12 is what the lockfile and the `packageManager` field expect:
 ```bash
 npm install -g pnpm@^12
 pnpm install
+```
+
+Nothing in `scripts/` is pure standard library. `gen-icons.py` resizes artwork with Pillow, and the three test harnesses
+drive and observe real X11 events through python-xlib, which is the whole reason they can assert things a unit test
+cannot:
+
+```bash
+sudo apt install -y python3-pil python3-xlib
 ```
 
 ## Everyday commands
@@ -152,6 +161,12 @@ Every run opens with a block from `features::diagnostics`: version and identifie
 kernel, the webview engine and its version, the desktop and whether it is X11 or Wayland, where the config and logs
 live, and the preferences in force. Almost every quirk in this app is specific to one of those, so a log without them
 cannot be acted on. It is written before anything that can fail, so a launch that dies still says where it died.
+
+**Help → Report an Issue** pre-fills a GitHub issue body from `diagnostics::facts` — the same function the header above
+calls, so a report and the log attached to it can never disagree about the machine they came from. The finished URL is
+held under 2000 characters, the smallest limit anything between the app and GitHub is likely to impose, and it drops its
+prose headings before it drops any of the facts: someone can describe their own problem unprompted, but nobody retypes
+their WebKitGTK version from memory.
 
 Timestamps are local, not UTC — the first thing anyone does with a log is line it up against when they saw the problem.
 
