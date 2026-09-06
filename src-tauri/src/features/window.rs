@@ -33,12 +33,23 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .initialization_script(crate::inject::SCRIPT)
         .on_navigation(crate::features::external_links::navigation_guard)
         .on_download(crate::features::downloads::handle)
-        .on_page_load(|webview, payload| {
+        .on_page_load(|webview, payload| match payload.event() {
+            // WebKitGTK reports this at `Committed`: the document exists and
+            // nothing is painted yet, which is the moment to notice that Google
+            // has parked the window on a page with no way back into the app.
+            tauri::webview::PageLoadEvent::Started => {
+                crate::features::sign_in::check(&webview, payload.url());
+            }
             // Belt and braces. The initialization script is the real mechanism
             // -- it does run at document-start on remote URLs on all three
             // desktop webviews -- but re-evaluating on load costs nothing and
             // chat.js guards against running twice.
-            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+            //
+            // The failed-load page gets both, as it happens -- Tauri's own
+            // bootstrap is there too, `__TAURI_INTERNALS__` and all, it just
+            // cannot be used from an opaque origin. See the error-page section
+            // in chat.js.
+            tauri::webview::PageLoadEvent::Finished => {
                 let _ = webview.eval(crate::inject::SCRIPT);
             }
         })

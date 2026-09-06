@@ -60,6 +60,17 @@ pub fn run() {
                 return;
             }
 
+            // The menu item this stands in for cannot be clicked from a
+            // script, and neither can the dialog it raises. The grant is also
+            // the one thing here with a timer long enough to be worth
+            // shortening:
+            // `GOOGLE_CHAT_LINK_GRANT_SECS=10 ... --test-links-in-app`.
+            #[cfg(debug_assertions)]
+            if argv.iter().any(|a| a == "--test-links-in-app") {
+                features::external_links::toggle_without_asking(app);
+                return;
+            }
+
             // Clicking the popup itself cannot be scripted, so this stands in
             // for it: `google-chat-tauri --test-activation`.
             #[cfg(debug_assertions)]

@@ -51,12 +51,20 @@ pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
 
     log::debug!("link request: {parsed}");
 
-    if crate::urls::should_open_externally(&parsed) {
+    // Preferences > Open Every Link in This Window suspends the allow-list for
+    // five minutes, so an external identity provider can finish a sign-in here
+    // rather than in the system browser.
+    let in_window = app.state::<AppState>().links_open_in_app();
+
+    if crate::urls::should_open_externally(&parsed) && !in_window {
         crate::features::external_links::open_in_browser(&app, parsed.as_str());
     } else {
         // Electron's `action: 'allow'` spawned a popup window. A second window
         // is not useful for Chat, so navigate the main webview instead.
-        log::debug!("navigating main window");
+        log::debug!(
+            "navigating main window{}",
+            if in_window { " (grant in force)" } else { "" }
+        );
         let _ = window.navigate(parsed);
     }
 
@@ -85,12 +93,15 @@ pub fn show_notification(app: AppHandle, id: u32, title: String, body: Option<St
 /// already do to itself.
 #[tauri::command]
 pub fn menu_action(app: AppHandle, action: String) -> Result<(), String> {
-    const ALLOWED: [&str; 6] = [
+    const ALLOWED: [&str; 7] = [
         "zoom-in",
         "zoom-out",
         "zoom-reset",
         "back",
         "forward",
+        // Navigating to the app root is something the page could already do to
+        // itself, which is the line this list draws.
+        "home",
         "close-to-tray",
     ];
 

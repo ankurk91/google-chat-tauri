@@ -8,6 +8,16 @@ pub fn logout_url() -> String {
     format!("https://www.google.com/accounts/Logout?continue={APP_URL}")
 }
 
+/// Where to send someone whose session has ended.
+///
+/// Not `APP_URL`. That is the URL a sign-out has already bounced off, so going
+/// back to it only repeats whatever Google decided the first time -- which is
+/// sometimes the sign-in form and sometimes a marketing page. This is the form
+/// itself, which then follows `continue` into the app.
+pub fn sign_in_url() -> String {
+    format!("https://accounts.google.com/ServiceLogin?continue={APP_URL}")
+}
+
 /// Where the update check asks what has been released.
 ///
 /// The list, not `/releases/latest`: that endpoint is documented as "the most
@@ -154,6 +164,37 @@ pub fn is_accounts_host(host: &str) -> bool {
             .all(|l| (1..=3).contains(&l.len()) && l.chars().all(|c| c.is_ascii_alphabetic()))
 }
 
+/// The marketing paths on `www.google.com`, which is otherwise off limits here.
+///
+/// Matched anywhere in the path so the localised forms are covered too:
+/// `/gmail/about/` and `/intl/en-GB/gmail/about/` are the same page.
+const LANDING_PATHS: [&str; 2] = ["/gmail/about", "/chat/about"];
+
+/// Has Google parked the window on one of its own marketing pages?
+///
+/// Signing out sends the browser to `accounts/Logout?continue=<APP_URL>`, and
+/// Google then decides -- not always the same way, which is why this is hard to
+/// reproduce -- whether a session-less visit to Chat gets the sign-in form or an
+/// advertisement for Workspace. The advertisement is a dead end: it is not the
+/// app, so "Go to Chat" only bounces off the same redirect, and it is not an
+/// origin the IPC capability covers, so until `chat.js` learned to fall back it
+/// could not even follow its own "Sign in" link. Reported in the wild as
+/// `https://workspace.google.com/intl/en-US/gmail/`.
+pub fn is_signed_out_landing(url: &url::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+
+    match host {
+        // The Workspace marketing site in full. Nothing under it is the app.
+        "workspace.google.com" => true,
+        // Only the product corners of www.google.com: the rest of that host
+        // carries the sign-out endpoint this arrives through.
+        "www.google.com" => LANDING_PATHS.iter().any(|p| url.path().contains(p)),
+        _ => false,
+    }
+}
+
 /// Attachment downloads. The electron app handed these to the system browser.
 const ATTACHMENT_URL: &str = "https://chat.google.com/u/0/api/get_attachment_url";
 
@@ -267,6 +308,65 @@ mod tests {
     fn third_parties_go_to_the_browser() {
         assert!(external("https://example.com/thing"));
         assert!(external("https://github.com/ankurk91"));
+    }
+
+    fn landing(u: &str) -> bool {
+        is_signed_out_landing(&url::Url::parse(u).unwrap())
+    }
+
+    #[test]
+    fn the_workspace_advertisement_is_a_dead_end() {
+        // The one seen in the wild after Sign Out, and its neighbours.
+        assert!(landing("https://workspace.google.com/intl/en-US/gmail/"));
+        assert!(landing("https://workspace.google.com/"));
+        assert!(landing("https://workspace.google.com/products/chat/"));
+        assert!(landing("https://www.google.com/gmail/about/"));
+        assert!(landing("https://www.google.com/intl/en-GB/gmail/about/"));
+    }
+
+    #[test]
+    fn the_sign_out_endpoint_is_not_a_dead_end() {
+        // It lives on www.google.com and is the very hop that leads here, so
+        // catching it would redirect the user off their own sign-out.
+        assert!(!landing(&logout_url()));
+        assert!(!landing("https://www.google.com/accounts/Logout"));
+    }
+
+    #[test]
+    fn the_app_and_its_sign_in_are_never_a_dead_end() {
+        for u in [
+            APP_URL,
+            "https://chat.google.com/u/0/app/home",
+            "https://accounts.google.com/ServiceLogin",
+            "https://accounts.google.co.in/accounts/SetSID",
+            &sign_in_url(),
+        ] {
+            assert!(!landing(u), "{u} must not be treated as a dead end");
+        }
+    }
+
+    #[test]
+    fn the_sign_in_url_comes_back_to_the_app() {
+        let url = sign_in_url();
+        assert!(url.starts_with("https://accounts.google.com/"), "{url}");
+        // Without the continue parameter the user signs in and stays on
+        // Google's account page, which is the dead end all over again.
+        assert!(url.contains(&format!("continue={APP_URL}")), "{url}");
+        // And it must be somewhere the link policy keeps in-app, or the sign-in
+        // finishes in the system browser.
+        assert!(!external(&url), "the sign-in page must stay in-app");
+    }
+
+    #[test]
+    fn the_injected_script_knows_where_chat_is() {
+        // chat.js has to carry the address itself: its offline page cannot ask
+        // Rust for it, because a failed-load document has an opaque origin and
+        // Tauri rejects every invoke from one. This is what keeps the copy from
+        // drifting away from the constant above.
+        assert!(
+            crate::inject::SCRIPT.contains(APP_URL),
+            "chat.js no longer contains {APP_URL}"
+        );
     }
 
     #[test]

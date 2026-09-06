@@ -72,7 +72,7 @@ src-tauri/
   src/
     lib.rs                     builder wiring, plugin order, setup
     commands.rs                every command the page can reach
-    urls.rs                    which links stay in-app
+    urls.rs                    which links stay in-app, and which pages are a dead end
     config.rs                  preferences
     state.rs                   unread count, connection, quitting
     icons.rs                   embedded artwork
@@ -95,9 +95,10 @@ initialization script and compiled into the binary with `include_str!`, which al
 It is injected twice — once at document start, and again from `on_page_load` as a fallback — so **everything in it must
 be idempotent**.
 
-It runs in the main frame only, and does five jobs: poll the unread count, intercept link clicks, translate keyboard
+It runs in the main frame only, and does six jobs: poll the unread count, intercept link clicks, translate keyboard
 shortcuts, replace
-`window.Notification`, and listen for notification clicks.
+`window.Notification`, listen for notification clicks, and rewrite the webview's own failed-load page into something
+readable.
 
 ### The ACL — the part that is easy to get wrong
 
@@ -209,6 +210,62 @@ Each of these was found by running the app, and each has a comment at the releva
   Wayland path has to be checked by hand. `smoke-test.py` also runs in a sandbox profile, because it is otherwise at the
   mercy of the developer's own `start_hidden` — with that set there is no window to find and the failure looks identical
   to the one above, which cost an hour once.
+- **An ACL rejection makes a page's links dead, and that is how someone gets stranded.** The capability names
+  `mail.google.com` and `chat.google.com`, so every `invoke` from any other origin is turned down. `chat.js` intercepts
+  cross-origin and `target=_blank` clicks *everywhere*, because an initialization script has no way to run on some
+  documents and not others — so on an origin the ACL does not cover it was calling `preventDefault()` and then
+  swallowing the rejection, leaving the page with links that do nothing. The worst case is the one that was reported:
+  signed out on a Google marketing page, where the "Sign in" link is the only way back. `handOff` now navigates the
+  window itself when Rust will not answer. Nothing is given up by it — the allow-list exists to keep links *shared
+  inside Chat* out of this window, and off the Chat origins there are none.
+- **A sign-out can land on an advertisement.** `accounts/Logout?continue=<APP_URL>` follows the continue parameter, and
+  Google then decides — not consistently, which is why this is hard to reproduce — whether a session-less visit to Chat
+  gets the sign-in form or `workspace.google.com/intl/en-US/gmail/`. The advertisement is a dead end: **History → Go to
+  Chat** only bounces off the same redirect, so the only way out used to be **Reset App Data**. `features::sign_in`
+  watches what commits and sends the window at `accounts.google.com/ServiceLogin` instead, at most twice in a row —
+  a redirect loop would be worse than the dead end, and the dead end is now clickable anyway. Verified against the real
+  page by pointing `APP_URL` at `workspace.google.com/intl/en-US/gmail/` for one run: the app launched onto the
+  advertisement and arrived at Google's sign-in form. Pointing `sign_in_url` back at the advertisement as well produced
+  two redirects and then the warning, which is the loop guard doing its job.
+- **A menu item can be found again, but not through `Menu::get`.** That only searches the top level, so every check
+  item under Preferences is invisible to it — which is why the toggles keep their own state rather than reading a tick
+  back. The link grant is the one setting that changes without a click, so it needs to clear its own tick;
+  `app_menu::nested_check_item` walks the submenus by hand to reach it. Rebuilding the whole menu with `set_menu` works
+  too and gets every tick right, but GTK answers it with one *"no accelerator installed in accel group"* warning per
+  accelerator, every time.
+- **`navigate` from inside `on_page_load` re-enters the webview.** `send_user_message` dispatches inline when it is
+  already on the main thread, and `on_page_load` *is* the main thread, inside WebKit's own `load-changed` handler — so
+  a redirect there asks WebKit to start a second load from within the first one's callback. `run_on_main_thread` is no
+  escape; it goes through the same function. `features::sign_in` sends the navigation from a spawned thread, which
+  routes it through the event loop and runs it once the load has settled.
+- **WebKitGTK's failed-load page has no styling whatsoever.** It is built as
+  `<html><body>%s</body></html>` and that is the whole template — confirmed by reading it out of the shipped
+  `libwebkit2gtk-4.1`. Unstyled text is black, the window's `background_color` is Google's dark grey, and the result is
+  the one line explaining the failure rendered black on black. Electron would answer this with `did-fail-load` and a
+  local error page; wry exposes no equivalent hook, so there is nothing for Rust to hang a replacement on. `chat.js`
+  rewrites the document instead. The fingerprint it matches (empty head, a body with text and no elements) is narrow on
+  purpose: WKWebView leaves the document empty and WebView2 draws its own styled page, so neither is touched.
+- **That page is a near-dead end, and both obvious ways out of it are closed.** All measured by pointing `APP_URL` at a
+  local port with nothing on it, then starting a server there once the load had already failed:
+
+  | from inside the error document | result |
+    |---|---|
+  | `<a href>` at the URL that failed | click lands, handler runs, page never moves |
+  | `location.href = location.href` | nothing |
+  | `location.reload()` | nothing |
+  | `location.href = <any other URL>` | navigates immediately |
+  | `invoke(...)` | rejected: *"Origin header is not a valid URL"* |
+
+  So WebKit will not let the stand-in document navigate to the URL it is standing in for. And the bridge is no help
+  either: Tauri's IPC **is** injected there (`__TAURI_INTERNALS__` and `__TAURI__.core` both present), but the document
+  has an opaque origin — `location.origin` is the string `"null"` — and Tauri rejects that before it ever looks at a
+  capability, so no `remote.urls` entry can open it.
+
+  Two things follow. The **Try again** button aims at Chat's canonical trailing-slash URL rather than at whatever
+  failed, because Google treats `/chat/u/0` and `/chat/u/0/` as the same page (measured: the first answers 302 to the
+  second) and a differently spelled URL is the one thing that does move. And the same opaque origin is why
+  `isCrossOrigin` calls *every* link on that page external — which is what silently swallowed the first version of the
+  button when it was an ordinary anchor. A `<button>` with a handler sidesteps the interceptor as well.
 - **A hidden window is not just invisible, it is inert.** Chat's router does nothing while the page is hidden, so a
   notification click has to raise the window *first* and let it paint before the page is told about the click -- hence
   the ordering and the pause in `notifications::activated`.
@@ -279,8 +336,13 @@ optional: ureq defaults to Rustls and *panics* mid-request if the default is not
 webview shows a bare error page that says nothing about the app. One TCP connection to `chat.google.com:443` — no TLS,
 no HTTP, nothing a captive portal can answer misleadingly — decides it. Launching at login races the network, so it
 retries across about a minute (2, 4, 8, 15, 30 seconds; 84 seconds end to end, since every failed attempt also spends
-its connect timeout) and then tells the user once, through the desktop's own notification. It is deliberately not a
-monitor: nothing reloads the page or watches for the network coming back.
+its connect timeout) and then tells the user once, through the desktop's own notification.
+
+After that it keeps looking, every thirty seconds, until the network answers — and then loads Chat. That poller only
+exists because the error page in the window cannot retry itself (see the quirk above), so without it, joining wifi
+after launching offline leaves the app stuck on that page for as long as it stays open. It only ever starts when the
+app launched with no network at all, and it stops on the first success, so the cost is one TCP connect twice a minute
+for exactly as long as there is nothing to connect to.
 
 ## Debug-only affordances
 
@@ -294,9 +356,14 @@ cargo build --manifest-path src-tauri/Cargo.toml
 ./src-tauri/target/debug/google-chat-tauri --test-activation
 ./src-tauri/target/debug/google-chat-tauri --test-reset
 ./src-tauri/target/debug/google-chat-tauri --test-update-check
+./src-tauri/target/debug/google-chat-tauri --test-links-in-app
 ```
 
 `--test-update-check` runs the check that would otherwise wait half a minute and then twelve hours, dialog and all.
+`--test-links-in-app` clicks **Preferences → Open Every Link in This Window** for you, and
+`GOOGLE_CHAT_LINK_GRANT_SECS=10` shortens the five-minute grant so the lapse and the menu unticking itself can be
+watched inside one test run rather than one coffee break — also debug builds only, since an environment variable that
+can quietly widen the link policy has no business in a release.
 `GOOGLE_CHAT_PROBE_HOST=192.0.2.1:443` (TEST-NET-1, which never routes) makes the connectivity probe fail without
 touching the machine's network, which is how the offline notification is tested — also debug builds only, since an
 environment variable that can silently convince the app it is offline has no business in a release.

@@ -9,7 +9,9 @@
 //! must work reliably from inside the page -- Ctrl+F search being the one that
 //! matters -- is handled in `chat.js` instead.
 
-use tauri::menu::{AboutMetadata, CheckMenuItemBuilder, Menu, MenuItemBuilder, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadata, CheckMenuItem, CheckMenuItemBuilder, Menu, MenuItemBuilder, SubmenuBuilder,
+};
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::config::{self, Config, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
@@ -123,6 +125,18 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .checked(prefs.check_updates)
                 .build(app)?,
         )
+        .separator()
+        // Not a stored preference, which is why it sits below the separator:
+        // it lapses on its own and never survives a restart. See
+        // `features::external_links::toggle_in_app`.
+        .item(
+            &CheckMenuItemBuilder::with_id(
+                crate::features::external_links::MENU_ID,
+                crate::features::external_links::MENU_LABEL,
+            )
+            .checked(app.state::<AppState>().links_open_in_app())
+            .build(app)?,
+        )
         .build()?;
 
     let help = SubmenuBuilder::new(app, "Help")
@@ -146,6 +160,30 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .build()?;
 
     Menu::with_items(app, &[&file, &edit, &view, &history, &preferences, &help])
+}
+
+/// Find a check item one level down, by id.
+///
+/// `Menu::get` searches the top level only, which is why the check items in
+/// Preferences cannot be read back through it -- and why the toggles below
+/// track their own state instead of asking the menu. Walking the submenus by
+/// hand does reach them, and the link grant needs that: it is the one setting
+/// that switches itself off, so something has to clear its tick without the
+/// user clicking anything.
+pub fn nested_check_item<R: Runtime>(app: &AppHandle<R>, id: &str) -> Option<CheckMenuItem<R>> {
+    for top in app.menu()?.items().ok()? {
+        let Some(submenu) = top.as_submenu() else {
+            continue;
+        };
+        for item in submenu.items().ok()? {
+            if let Some(check) = item.as_check_menuitem() {
+                if check.id() == id {
+                    return Some(check.clone());
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn handle(app: &AppHandle, id: &str) {
@@ -198,11 +236,13 @@ pub fn handle(app: &AppHandle, id: &str) {
             }
         }
 
-        // A check item flips its own tick before the event arrives, but there is
-        // no reliable way to read that back -- `Menu::get` only searches
-        // top-level items, so a nested check item is never found. Toggling the
-        // stored value instead keeps the two in step, because the menu is built
-        // from this same state at startup.
+        // A check item flips its own tick before the event arrives, and
+        // `Menu::get` cannot read it back -- it only searches top-level items,
+        // so nothing nested in a submenu is ever found. (`nested_check_item`
+        // above walks the submenus by hand and does reach them, but only the
+        // link grant needs that, because it is the one setting that changes
+        // without a click.) Toggling the stored value keeps the two in step,
+        // because the menu is built from this same state at startup.
         "pref-autostart" => {
             let enabling = !crate::features::autostart::is_enabled(app);
             crate::features::autostart::set(app, enabling);
@@ -219,6 +259,10 @@ pub fn handle(app: &AppHandle, id: &str) {
                 if prefs.check_updates { "on" } else { "off" }
             );
         }
+        id if id == crate::features::external_links::MENU_ID => {
+            crate::features::external_links::toggle_in_app(app)
+        }
+
         "pref-start-hidden" => {
             let prefs = app
                 .state::<Config>()

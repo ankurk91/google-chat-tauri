@@ -46,15 +46,27 @@ already open but behind something else produces a notification rather than the w
 application to raise itself, so your desktop offers the notification instead; click it to get the window. Minimising
 first, or clicking a message notification, both bring it back directly. On an X11 session this does not happen.
 
-**It opens a Google or Gmail marketing page instead of Chat.** That is what
-`chat.google.com` serves to a signed-out browser, so the app is not broken — its session is gone. Sign in again from
-that page. If you had just used **Help → Reset App Data**, that is exactly what it does: signs you out.
+**It opens a Google or Gmail marketing page instead of Chat.** That is what Google serves a signed-out browser, so the
+app is not broken — its session is gone. If you had just used **Help → Reset App Data** or **File → Sign Out**, that is
+exactly what those do. The app should take itself to the sign-in form within a second; if it does not, the **Sign in**
+link on the page works, and so does **History → Go to Chat**. You should never have to wipe the app's data to get back
+in — if you do, that is a bug worth reporting.
+
+**It says Google Chat is out of reach.** The connection was not there when the app started. Leave it open — the app
+checks every half minute and loads Chat by itself once the network is back, usually before you get round to the
+**Try again** button.
 
 **"No internet connection" when you are online.** The app tries to reach
 `chat.google.com` for about a minute after it starts and says so if nothing
 answers. A VPN, a proxy or a captive portal that blocks direct connections can
 produce this while a browser still works. It is only a message — the window
 loads Chat as soon as the connection is there.
+
+**Sign-in goes through your company's own login page (Okta, Entra ID, Ping).** Those hosts are not on the short list
+the app keeps in its own window, so a link out to one would open in your browser and finish the sign-in there instead.
+Turn on **Preferences → Open Every Link in This Window** first: for the next five minutes every link stays in the app,
+which is long enough to get through the flow. It switches itself back off, and you can untick it as soon as you are
+signed in.
 
 **Signed out unexpectedly, or sign-in loops.** Quit from the tray, remove
 `~/.local/share/com.ankurk91.google-chat-tauri`, and start again. That clears the app's stored session without touching

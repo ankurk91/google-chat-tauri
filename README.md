@@ -36,7 +36,7 @@ longer maintained, was 66 MB.
 - **Starts how you like** — optionally launch at login, and start hidden in the tray on any launch rather than opening a
   window. Both under **Preferences**.
 - **Keyboard shortcuts** — `Ctrl+F` to search, `Ctrl` `+`/`-`/`0` to zoom,
-  `Alt+←`/`Alt+→` to go back and forward, `Ctrl+W` to hide to the tray.
+  `Alt+←`/`Alt+→` to go back and forward, `Alt+Home` to return to Chat, `Ctrl+W` to hide to the tray.
 - **Links open in your browser** — a Docs, Sheets, Drive or Calendar link someone shares opens in your real browser,
   with your extensions and your other tabs. Only Chat itself stays in this window.
 - **Attachments download through your browser** — clicking one hands the link to your browser, which saves it the way it
@@ -44,9 +44,11 @@ longer maintained, was 66 MB.
   to your Downloads folder.
 - **Signs in normally** — a personal Google account and a paid Google Workspace one both work, in any country: the
   sign-in hop through your local `accounts.google.*` domain stays inside the window instead of stranding you on a login
-  page. **File → Sign Out** ends the session without touching your browser's.
-- **Says when it cannot reach Chat** — with no network at startup, a notification tells you, instead of leaving you
-  looking at a web engine error page with no explanation on it.
+  page. **File → Sign Out** ends the session without touching your browser's, and signing back in afterwards does not
+  need the app's data wiped first.
+- **Waits out a missing network** — with no connection at startup, a notification tells you and the window shows a
+  readable page with a **Try again** button, rather than the web engine's own unstyled error. It keeps watching, so
+  Chat loads by itself within half a minute of the connection coming back.
 - **A way back from a wedged session** — **Help → Reset App Data** signs you out, returns every preference to its
   default and restarts the app clean. **Show Logs** and **Report an Issue** are next to it.
 
@@ -54,9 +56,12 @@ The app does not collect analytics and does not update itself. It does ask GitHu
 release exists, and tells you if there is one — you download and install it yourself. That can be turned off in
 **Preferences**.
 
-**Sign-in that leaves Google is not supported** — an external identity provider, or SSO through Okta, Entra ID, Ping and
-the like. Those flows redirect to a host belonging to your organisation, and the app cannot know that address ahead of
-time, so it cannot be on the short list of hosts allowed to stay in the window. Use Chat in your browser instead.
+**Sign-in that leaves Google** — an external identity provider, or SSO through Okta, Entra ID, Ping and the like —
+redirects to a host belonging to your organisation. The app cannot know that address ahead of time, so it is not on the
+short list of hosts allowed to stay in the window, and a link out to it would otherwise open in your browser and finish
+the sign-in there. **Preferences → Temporarily Open Every Link in This Window** suspends that for five minutes, which is
+long enough to get through the flow. It explains itself before it does anything, and switches itself off again
+afterwards.
 
 ## Supported systems
 

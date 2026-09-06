@@ -39,14 +39,20 @@ function makeDocument(dom = {}) {
       (listeners[type] = listeners[type] || []).push({ handler, capture });
     },
     querySelector: dom.querySelector || (() => null),
-    body: dom.body || { querySelectorAll: () => [] }
+    // `head` and `readyState` are only touched by the error-page fingerprint;
+    // a head with something in it is what every real page has.
+    readyState: dom.readyState || 'complete',
+    head: dom.head || { children: [{}] },
+    body: dom.body || { children: [{}], querySelectorAll: () => [] }
   };
 }
 
 /** Load chat.js into a fresh context and hand back what it exported onto it. */
-function load({ dom = {}, onInvoke = () => Promise.resolve() } = {}) {
+function load({ dom = {}, onInvoke = () => Promise.resolve(), href } = {}) {
   const calls = [];
   const document = makeDocument(dom);
+
+  const windowListeners = {};
 
   const window = {
     top: null,
@@ -54,9 +60,13 @@ function load({ dom = {}, onInvoke = () => Promise.resolve() } = {}) {
     // `origin` as well as `href`: chat.js compares a link's origin against
     // this one, and a location without it makes every link look external.
     location: {
-      href: 'https://mail.google.com/chat/u/0/',
+      href: href || 'https://mail.google.com/chat/u/0/',
       origin: 'https://mail.google.com',
       assign: () => {}
+    },
+    windowListeners,
+    addEventListener(type, handler) {
+      (windowListeners[type] = windowListeners[type] || []).push(handler);
     },
     setInterval: () => 0,
     clearInterval: () => {},
@@ -65,7 +75,13 @@ function load({ dom = {}, onInvoke = () => Promise.resolve() } = {}) {
     __TAURI_INTERNALS__: {
       invoke(command, args) {
         calls.push({ command, args });
-        return Promise.resolve(onInvoke(command, args));
+        // A throwing `onInvoke` stands in for a command the ACL turned down,
+        // which arrives at the page as a rejected promise, not a throw.
+        try {
+          return Promise.resolve(onInvoke(command, args));
+        } catch (err) {
+          return Promise.reject(err);
+        }
       }
     }
   };
@@ -94,6 +110,14 @@ function load({ dom = {}, onInvoke = () => Promise.resolve() } = {}) {
   return { window, document, calls };
 }
 
+/** Fire a listener chat.js registered on `window` rather than on `document`. */
+function fireWindow(window, type) {
+  for (const handler of window.windowListeners[type] || []) handler({ type });
+}
+
+/** Let the promise chain behind an invoke settle. */
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
 /** Fire a captured listener as the page would. */
 function fire(document, type, event) {
   for (const { handler } of document.listeners[type] || []) handler(event);
@@ -101,7 +125,7 @@ function fire(document, type, event) {
 
 const anchor = (href, target) => ({ tagName: 'A', href, target, parentElement: null });
 
-console.log('[1/5] boot');
+console.log('[1/7] boot');
 {
   const { window, document, calls } = load();
   check('reports itself once ready', calls.some((c) => c.command === 'page_log'));
@@ -115,7 +139,7 @@ console.log('[1/5] boot');
   check('is idempotent per document', calls.length === before, `${calls.length - before} extra call(s)`);
 }
 
-console.log('[2/5] notifications');
+console.log('[2/7] notifications');
 {
   const { window, calls } = load();
   const shown = new window.Notification('Ankur', { body: 'hello', tag: 'dm/42', data: { url: 'x' } });
@@ -157,7 +181,7 @@ console.log('[2/5] notifications');
   check('marks where it came from', swCall.args.title === 'SW');
 }
 
-console.log('[3/5] links');
+console.log('[3/7] links');
 {
   const { window, calls } = load();
   window.open('https://example.test/page');
@@ -168,7 +192,7 @@ console.log('[3/5] links');
   check('returns something usable to Google', !!stub && typeof stub.close === 'function' && stub.closed === false);
 }
 
-console.log('[4/5] click interception');
+console.log('[4/7] click interception');
 {
   const { document, calls } = load();
   let prevented = 0;
@@ -198,7 +222,7 @@ console.log('[4/5] click interception');
   check('ignores a click on something that is not a link', prevented === 2, `prevented ${prevented}`);
 }
 
-console.log('[5/5] keyboard shortcuts');
+console.log('[5/7] keyboard shortcuts');
 {
   const focused = [];
   const searchBox = {
@@ -233,10 +257,21 @@ console.log('[5/5] keyboard shortcuts');
   press('w', { ctrl: true });
   press('ArrowLeft', { alt: true });
   press('ArrowRight', { alt: true });
+  // Alt+Home is on the History menu item, and menu accelerators do not reach
+  // the app while focus is in the webview, so this is the only thing answering.
+  press('Home', { alt: true });
   check(
     'forwards the rest to Rust',
     JSON.stringify(actions()) ===
-      JSON.stringify(['zoom-in', 'zoom-out', 'zoom-reset', 'close-to-tray', 'back', 'forward']),
+      JSON.stringify([
+        'zoom-in',
+        'zoom-out',
+        'zoom-reset',
+        'close-to-tray',
+        'back',
+        'forward',
+        'home'
+      ]),
     actions().join(',')
   );
 
@@ -249,5 +284,175 @@ console.log('[5/5] keyboard shortcuts');
   check('accepts Ctrl+Shift+= as zoom in', actions().length === before + 1);
 }
 
-console.log(failures ? `\n${failures} FAILED` : '\nall checks passed');
-process.exit(failures ? 1 : 0);
+/*
+ * The last two need a turn of the microtask queue, so they live in an async
+ * main and the report moves in with them.
+ */
+async function rest() {
+  console.log('[6/7] hand-off fallback');
+  {
+    // The capability names mail.google.com and chat.google.com and nothing
+    // else, so on Google's post-sign-out marketing page every invoke is turned
+    // down. The link has to go somewhere anyway, or the page is a dead end.
+    const { window, document, calls } = load({
+      onInvoke: (command) => {
+        if (command === 'open_external_url') throw new Error('ACL: origin not allowed');
+      }
+    });
+
+    // The rejection below is the point of the test, so let neither chat.js's
+    // own report of it nor the fallback's warning clutter the run.
+    const quiet = { warn: console.warn, error: console.error };
+    console.warn = () => {};
+    console.error = () => {};
+    fire(document, 'click', {
+      target: anchor('https://accounts.google.com/ServiceLogin'),
+      preventDefault: () => {},
+      stopPropagation: () => {}
+    });
+    await settle();
+    console.warn = quiet.warn;
+    console.error = quiet.error;
+
+    check('asks Rust first', calls.some((c) => c.command === 'open_external_url'));
+    check(
+      'navigates this window when Rust will not answer',
+      window.location.href === 'https://accounts.google.com/ServiceLogin',
+      window.location.href
+    );
+  }
+  {
+    // And the opposite: where the policy does apply, Rust owns the outcome and
+    // the window must stay where it is.
+    const { window, document } = load();
+    fire(document, 'click', {
+      target: anchor('https://docs.google.com/document/d/abc/edit'),
+      preventDefault: () => {},
+      stopPropagation: () => {}
+    });
+    await settle();
+    check(
+      'leaves the window alone when Rust took the link',
+      window.location.href === 'https://mail.google.com/chat/u/0/',
+      window.location.href
+    );
+  }
+
+  console.log('[7/7] webview error page');
+  {
+    // What WebKitGTK builds for a failed load: an empty head, and a body with
+    // one line of text and no elements. Unstyled, so black on the window's
+    // dark background.
+    const body = {
+      children: [],
+      textContent: 'Could not connect to server',
+      innerHTML: '',
+      querySelectorAll: () => []
+    };
+    const button = { listeners: [], addEventListener: (t, h) => button.listeners.push(h) };
+    // The URL that actually fails at startup, without the trailing slash:
+    // Google's 302 to the canonical form never happened.
+    const FAILED = 'https://mail.google.com/chat/u/0';
+    const { window, calls } = load({
+      href: FAILED,
+      dom: {
+        head: { children: [] },
+        body,
+        readyState: 'loading',
+        querySelector: (sel) => (sel === 'button.retry' ? button : null)
+      }
+    });
+
+    check('waits for the document', body.innerHTML === '', 'rewrote a page still parsing');
+
+    fireWindow(window, 'load');
+    check('rewrites the unreadable page', body.innerHTML.includes('out of reach'));
+    check('keeps the reason the webview gave', body.innerHTML.includes('Could not connect to server'));
+    check('paints over the window background colour', body.innerHTML.includes('#202124'));
+    check('offers a retry button', body.innerHTML.includes('<button class="retry"'));
+    check(
+      'says so in the app log',
+      calls.some((c) => c.command === 'page_log' && /load failed/.test(c.args.message))
+    );
+
+    // The retry must aim somewhere other than the URL that failed: WebKit's
+    // stand-in document will not navigate to the one it stands in for, and the
+    // bridge is closed to it because the origin is opaque.
+    for (const handler of button.listeners) handler({ type: 'click' });
+    check(
+      'retries at a URL other than the one that failed',
+      window.location.href !== FAILED,
+      window.location.href
+    );
+    check(
+      'and it is still Chat',
+      window.location.href === 'https://mail.google.com/chat/u/0/',
+      window.location.href
+    );
+
+    window.location.href = FAILED;
+    fireWindow(window, 'online');
+    check('retries when the network comes back', window.location.href !== FAILED);
+  }
+  {
+    // The message is the webview's, not ours, and it carries the URL that
+    // failed -- so it goes in escaped.
+    const body = {
+      children: [],
+      textContent: '<img src=x onerror=alert(1)>',
+      innerHTML: '',
+      querySelectorAll: () => []
+    };
+    load({ dom: { head: { children: [] }, body, readyState: 'complete' } });
+    check(
+      'escapes the message it was handed',
+      !body.innerHTML.includes('<img') && body.innerHTML.includes('&lt;img'),
+      body.innerHTML.slice(0, 80)
+    );
+  }
+  {
+    // If the canonical form is somehow the one that failed, the retry has to
+    // move anyway -- aiming at the same string again is the one thing that
+    // provably does nothing.
+    const CANONICAL = 'https://mail.google.com/chat/u/0/';
+    const body = {
+      children: [],
+      textContent: 'Could not connect to server',
+      innerHTML: '',
+      querySelectorAll: () => []
+    };
+    const button = { listeners: [], addEventListener: (t, h) => button.listeners.push(h) };
+    const { window } = load({
+      href: CANONICAL,
+      dom: {
+        head: { children: [] },
+        body,
+        readyState: 'complete',
+        querySelector: (sel) => (sel === 'button.retry' ? button : null)
+      }
+    });
+    for (const handler of button.listeners) handler({ type: 'click' });
+    check('never retries at the URL it is already on', window.location.href !== CANONICAL,
+      window.location.href);
+  }
+  {
+    // A real page must be left entirely alone, including one caught mid-parse.
+    const body = {
+      children: [{}],
+      textContent: 'Chat',
+      innerHTML: '<div>real</div>',
+      querySelectorAll: () => []
+    };
+    load({ dom: { body, readyState: 'complete' } });
+    check('leaves a real page alone', body.innerHTML === '<div>real</div>', body.innerHTML);
+
+    const parsing = { children: [], textContent: '', innerHTML: '', querySelectorAll: () => [] };
+    load({ dom: { head: { children: [] }, body: parsing, readyState: 'complete' } });
+    check('leaves an empty document alone', parsing.innerHTML === '', parsing.innerHTML);
+  }
+
+  console.log(failures ? `\n${failures} FAILED` : '\nall checks passed');
+  process.exit(failures ? 1 : 0);
+}
+
+rest();

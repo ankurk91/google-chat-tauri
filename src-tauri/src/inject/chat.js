@@ -26,6 +26,11 @@
 
   const POLL_MS = 1000;
 
+  // Set once the webview's failed-load page has been rewritten (see the
+  // error-page section below). Shared with the unread poller, which must not
+  // scrape our own markup and report nothing unread.
+  let showingErrorPage = false;
+
   /* ---------------------------------------------------------------- bridge */
 
   // Errors here are worth seeing. Swallowing them silently makes an ACL
@@ -117,6 +122,8 @@
   let lastHasUnread = null;
 
   function pollUnread() {
+    if (showingErrorPage) return;
+
     const count = readUnreadCount();
     let hasUnread = readHasUnread();
     if (hasUnread === null) hasUnread = lastHasUnread === null ? count > 0 : lastHasUnread;
@@ -133,9 +140,28 @@
    * setWindowOpenHandler. Tauri has no equivalent hook for window.open, so the
    * interception happens here and the policy decision stays in Rust. */
 
+  /* The IPC only answers on the origins named in the app's capability --
+   * mail.google.com and chat.google.com. Google can leave the window somewhere
+   * else entirely: a sign-in hop through a country domain, an external identity
+   * provider, or, after a sign out, one of its own marketing pages. There the
+   * ACL rejects every hand-off, and swallowing that rejection is what leaves
+   * those pages with dead links -- the "Sign in" link included, which is the
+   * only way back and is why someone ends up wiping the profile to log in
+   * again.
+   *
+   * So when Rust cannot be asked, do the plain thing the click was going to do
+   * and navigate this window. Nothing is given up by it: the allow-list exists
+   * to keep links *shared inside Chat* out of this window, and off the Chat
+   * origins there are no such links to keep out. */
   function handOff(url) {
     if (!url) return;
-    invoke('open_external_url', { url: String(url) }).catch(ignore);
+    const href = String(url);
+
+    invoke('open_external_url', { url: href }).catch(() => {
+      // console, not log(): page_log travels over the same rejected bridge.
+      console.warn('[gchat] no link policy on this origin; navigating to', href);
+      location.href = href;
+    });
   }
 
   const nativeOpen = window.open;
@@ -226,6 +252,10 @@
     if (event.altKey && !mod && !event.shiftKey) {
       if (key === 'arrowleft') return 'back';
       if (key === 'arrowright') return 'forward';
+      // Alt+Home is declared on the History menu item, and a menu accelerator
+      // never arrives while focus is in the webview -- so without this line it
+      // is a shortcut the menu advertises and nothing answers.
+      if (key === 'home') return 'home';
     }
     return null;
   }
@@ -479,7 +509,129 @@
       .catch(ignore);
   }
 
+  /* ------------------------------------------------- failed-load error page */
+  /* Launch with no network and the window shows whatever the webview shows for
+   * a load that failed. On WebKitGTK that is literally
+   *
+   *     <html><body>Could not connect to server</body></html>
+   *
+   * with no stylesheet of any kind -- the template is in the shipped
+   * libwebkit2gtk-4.1, and that is the whole of it. Unstyled text is black and
+   * this window's background_color is Google's dark grey, so the one line
+   * saying what went wrong is black on black and cannot be read.
+   *
+   * Electron answers this with `did-fail-load` and a local error page. wry
+   * exposes no equivalent hook, so Rust has nothing to hang a replacement on --
+   * but the document is ours to rewrite once it is here, and doing it from the
+   * page needs no IPC, which matters because the URL that failed may be an
+   * origin the ACL rejects.
+   *
+   * The fingerprint is deliberately narrow. WKWebView leaves the document empty
+   * rather than writing a message into it, and WebView2 draws its own styled
+   * page; neither matches, and neither is touched. */
+
+  function isWebviewErrorPage() {
+    if (!document.body || !document.head) return false;
+    // An empty head, and a body holding text and no elements at all. Every real
+    // page brings a <title> at the very least. Only ever asked once loading has
+    // finished, because a page that is still parsing looks like this too.
+    if (document.head.children.length || document.body.children.length) return false;
+    return !!String(document.body.textContent).trim();
+  }
+
+  const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+  const escapeHtml = (text) => String(text).replace(/[&<>"]/g, (ch) => ESCAPES[ch]);
+
+  // #202124 is the window's own background_color (see features/window.rs), so
+  // there is no seam between the two while this paints.
+  const ERROR_PAGE_CSS = `
+    :root { color-scheme: dark; }
+    body { margin: 0; background: #202124; color: #e8eaed;
+           font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    main { box-sizing: border-box; min-height: 100vh; padding: 24px; text-align: center;
+           display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    h1 { margin: 0 0 12px; font-size: 20px; font-weight: 500; }
+    p { margin: 0 0 8px; max-width: 34em; color: #9aa0a6; }
+    .reason { font-size: 13px; color: #80868b; word-break: break-word; }
+    .retry { margin-top: 20px; padding: 9px 22px; border: 0; border-radius: 4px;
+             font: inherit; font-weight: 500; cursor: pointer;
+             background: #8ab4f8; color: #202124; }
+  `;
+
+  /* Chat's canonical address, which is where the retry aims.
+   *
+   * With the trailing slash, because that is Google's own spelling: measured,
+   * `https://mail.google.com/chat/u/0` answers 302 to `.../0/`. Kept in step
+   * with `urls::APP_URL` by a test over there. */
+  const CHAT_URL = 'https://mail.google.com/chat/u/0/';
+
+  /* Retrying from inside a failed-load document is harder than it looks, and
+   * both of the obvious routes are closed. Measured against a local server
+   * brought up only after the load had already failed:
+   *
+   *  - The page cannot navigate to the URL it is standing in for. An `<a>`
+   *    pointing at it, `location.href = location.href` and `location.reload()`
+   *    all do nothing whatsoever -- the click lands, the handler runs, and the
+   *    page never moves. Any *other* URL navigates immediately.
+   *  - The bridge cannot be asked either. Tauri's IPC is injected and present,
+   *    but the document has an opaque origin -- `location.origin` is the string
+   *    "null" -- and every invoke comes back "Origin header is not a valid
+   *    URL". No capability entry changes that; it is rejected before the ACL is
+   *    consulted.
+   *
+   * What is left is a URL spelled differently, and Google gives us one for
+   * free: with and without the trailing slash are the same page. So aim at
+   * whichever of the two is not the one that failed.
+   *
+   * The same opaque origin is why `isCrossOrigin` calls every link on this page
+   * external, which is what made the first version of this button -- an
+   * ordinary anchor -- get swallowed by the click interceptor above. A button
+   * with a handler sidesteps that as well. */
+  function tryAgain() {
+    location.href = location.href === CHAT_URL ? CHAT_URL.replace(/\/$/, '') : CHAT_URL;
+  }
+
+  function replaceWebviewErrorPage() {
+    if (!isWebviewErrorPage()) return false;
+
+    // Keep the webview's own sentence. It is the only thing that says *why* --
+    // no route to the host, a name that would not resolve, a certificate -- and
+    // that is worth more than a tidier message of our own.
+    const reason = String(document.body.textContent).trim();
+    showingErrorPage = true;
+
+    // This never arrives from a real error page -- the opaque origin below sees
+    // to that -- and it is worth sending anyway: if the fingerprint ever
+    // matched something that was not an error page, the bridge would be open
+    // and this line would be the only warning that it had.
+    log('warn', `load failed, showing the offline page: ${reason}`);
+
+    document.body.innerHTML =
+      `<style>${ERROR_PAGE_CSS}</style>` +
+      '<main>' +
+      '<h1>Google Chat is out of reach</h1>' +
+      '<p>Check the network connection. Nothing has been lost; this window ' +
+      'picks up where it left off.</p>' +
+      `<p class="reason">${escapeHtml(reason)}</p>` +
+      '<button class="retry" type="button">Try again</button>' +
+      '</main>';
+
+    const button = document.querySelector('button.retry');
+    if (button) button.addEventListener('click', tryAgain);
+
+    // Best-effort on top of the button: WebKitGTK backs navigator.onLine with
+    // the system's network monitor, so rejoining wifi can retry without anyone
+    // clicking. If the event never arrives, the button is still there.
+    window.addEventListener('online', tryAgain);
+    return true;
+  }
+
   /* ------------------------------------------------------------------ boot */
+
+  function whenLoaded(callback) {
+    if (document.readyState === 'complete') callback();
+    else window.addEventListener('load', callback);
+  }
 
   whenReady(() => {
     log('info', `chat.js attached to ${location.href}`);
@@ -487,4 +639,9 @@
     pollUnread();
     setInterval(pollUnread, POLL_MS);
   });
+
+  // Separate from whenReady: this wants a finished document rather than a ready
+  // bridge, and on a page that failed to load there may be no working bridge at
+  // all.
+  whenLoaded(replaceWebviewErrorPage);
 })();

@@ -8,6 +8,7 @@ pub mod downloads;
 pub mod external_links;
 pub mod notifications;
 pub mod reset;
+pub mod sign_in;
 pub mod tray;
 pub mod updates;
 pub mod user_agent;
