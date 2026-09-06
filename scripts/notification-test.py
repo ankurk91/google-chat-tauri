@@ -16,7 +16,8 @@ a pass or a fail, and says so.
 Clicking the popup is not automated: Cinnamon draws notifications inside the
 compositor, so there is no X window to target.
 
-Requires Linux/X11 and python-xlib.
+Requires Linux/X11 and python-xlib. On a Wayland session the pointer check is
+advisory only -- see `watch_pointer`.
 """
 
 import os
@@ -29,12 +30,49 @@ import time
 from Xlib import display
 
 BIN = pathlib.Path("src-tauri/target/debug/google-chat-tauri").resolve()
+SOURCE = pathlib.Path("src-tauri/src/features/notifications.rs")
 LOG = pathlib.Path("/tmp/gchat-notification-test.log")
 SETTLE = 18  # comfortably past the daemon's default notification timeout
 
+# The line `features::notifications::activated` logs, as it reaches the log.
+#
+# The leading `] ` is what keeps this to activations Rust saw from the daemon:
+# the page reports the same event through `page_log`, which arrives as
+# `] page: notification activated: ...` and must not be counted twice.
+#
+# This once read `[notify] activated`, a string the app has never logged, so the
+# count was always zero and "no self-activation" could not fail however many
+# activations arrived. `check_marker` below is why that cannot happen twice.
+ACTIVATED = "] notification activated: id="
+# The same text as the format string in the source, which has no log prefix.
+ACTIVATED_IN_SOURCE = ACTIVATED.removeprefix("] ")
+
+
+def check_marker():
+    """Fail loudly if the log line this counts has been renamed.
+
+    The whole verdict rests on matching one string in the app's output. When
+    that string drifts the count silently goes to zero and every run passes, so
+    check it against the source rather than trusting it.
+    """
+    if not SOURCE.exists():
+        return  # run from somewhere else; the count is on its own
+    if ACTIVATED_IN_SOURCE not in SOURCE.read_text(errors="replace"):
+        sys.exit(
+            f"{SOURCE} no longer logs {ACTIVATED_IN_SOURCE!r} -- update ACTIVATED "
+            f"in this script, or it will count nothing and pass regardless"
+        )
+
 
 def watch_pointer(seconds):
-    """Sample the pointer while waiting. Returns True if the user touched it."""
+    """Sample the pointer while waiting. Returns True if the user touched it.
+
+    X11 only. On a Wayland session this reads the XWayland pointer, which tracks
+    only while the pointer is over an XWayland surface -- so a user moving the
+    mouse across native Wayland windows can register as perfectly still, and the
+    run reports a confident verdict it has not earned. `main` warns when it sees
+    a Wayland session; treat those runs as advisory.
+    """
     dpy = display.Display()
     root = dpy.screen().root
 
@@ -57,6 +95,11 @@ def main():
     if not BIN.exists():
         sys.exit(f"{BIN} not found -- run `cargo build` first")
 
+    check_marker()
+    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland":
+        print("note: Wayland session -- the pointer check sees XWayland only, "
+              "so an 'untouched' verdict is advisory")
+
     LOG.write_text("")
     proc = subprocess.Popen(
         [str(BIN)], stdout=open(LOG, "w"), stderr=subprocess.STDOUT, start_new_session=True
@@ -77,7 +120,7 @@ def main():
 
         log = LOG.read_text(errors="replace")
         shown = "failed to show notification" not in log
-        activations = log.count("[notify] activated")
+        activations = log.count(ACTIVATED)
 
         print(f"  {'PASS' if shown else 'FAIL'}  notification was sent")
 
