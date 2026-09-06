@@ -8,18 +8,89 @@ pub fn logout_url() -> String {
     format!("https://www.google.com/accounts/Logout?continue={APP_URL}")
 }
 
+/// How long the pre-filled issue URL is allowed to get.
+///
+/// GitHub itself accepts far more, but the request travels through whatever
+/// browser, launcher and proxy the user has, and 2000 characters is the
+/// smallest limit anything in that chain is likely to impose. Overshooting does
+/// not truncate the body -- it opens nothing at all, which is the one outcome
+/// worse than a short report.
+const MAX_ISSUE_URL: usize = 2000;
+
+/// The questions whose answers are missing from almost every first report.
+const PROMPTS: &str = "### What happened
+
+### What you expected
+
+### Steps to reproduce
+
+1.
+2.
+";
+
+/// Where the rest of the answers already are, written down.
+const LOGS: &str = "### Logs
+
+Help > Show Logs, then attach the log file. The block at the top of it is the
+part that matters.
+";
+
 /// Pre-filled "Report an Issue" link for the Help menu.
+///
+/// The facts come from `diagnostics::facts`, the same function that writes the
+/// log header, so a report and its attached log can never disagree about which
+/// machine they came from.
 pub fn issue_url() -> String {
+    let facts: String = crate::features::diagnostics::facts()
+        .iter()
+        .map(|f| format!("- {f}\n"))
+        .collect();
+
+    let environment = format!(
+        "### Environment\n\n- app: {} {} ({})\n{facts}",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        crate::features::diagnostics::profile(),
+    );
+
+    // Longest first, and what goes when it does not fit is the prose: someone
+    // can describe their own problem unprompted, but nobody retypes their
+    // WebKitGTK version from memory.
+    for body in [
+        format!("{PROMPTS}\n{environment}\n{LOGS}"),
+        format!("{environment}\n{LOGS}"),
+        environment.clone(),
+    ] {
+        let url = new_issue_url(&body);
+        if url.len() <= MAX_ISSUE_URL {
+            return url;
+        }
+    }
+
+    // Only reachable if the environment block alone is enormous -- a
+    // distribution with a novel for a PRETTY_NAME. Trim the body by characters
+    // and re-encode rather than cutting the finished URL, which would leave
+    // half a `%E2` escape behind.
+    fit(environment)
+}
+
+/// Shorten `body` until the URL built from it fits, and return that URL.
+fn fit(mut body: String) -> String {
+    loop {
+        let url = new_issue_url(&body);
+        if url.len() <= MAX_ISSUE_URL || body.is_empty() {
+            return url;
+        }
+        let keep = body.chars().count().saturating_sub(64);
+        body = body.chars().take(keep).collect();
+    }
+}
+
+fn new_issue_url(body: &str) -> String {
     format!(
         "{}/issues/new?body={}",
         env!("CARGO_PKG_REPOSITORY"),
-        urlencoding_lite(&format!(
-            "### Platform\n\n- App: {} {}\n- OS: {} {}\n",
-            env!("CARGO_PKG_NAME"),
-            env!("CARGO_PKG_VERSION"),
-            std::env::consts::OS,
-            std::env::consts::ARCH,
-        ))
+        urlencoding_lite(body)
     )
 }
 
@@ -173,5 +244,34 @@ mod tests {
     fn third_parties_go_to_the_browser() {
         assert!(external("https://example.com/thing"));
         assert!(external("https://github.com/ankurk91"));
+    }
+
+    #[test]
+    fn the_issue_url_fits_in_a_url_bar() {
+        let url = issue_url();
+        assert!(url.len() <= MAX_ISSUE_URL, "{} characters", url.len());
+    }
+
+    #[test]
+    fn the_issue_url_carries_the_environment() {
+        let url = issue_url();
+        assert!(url.starts_with("https://github.com/"));
+        // Percent-encoding leaves alphanumerics alone, so the labels survive
+        // literally -- which is what makes asserting on them worth anything.
+        for label in ["app", "platform", "webview"] {
+            assert!(url.contains(label), "{label} missing from {url}");
+        }
+    }
+
+    #[test]
+    fn an_over_long_body_is_trimmed_without_cutting_an_escape() {
+        // Multibyte on purpose: trimming the finished URL rather than the body
+        // it came from would leave half a `%E2` behind.
+        let url = fit("→".repeat(4000));
+        assert!(url.len() <= MAX_ISSUE_URL, "{} characters", url.len());
+        assert!(
+            !url[url.len() - 2..].contains('%'),
+            "url ends mid-escape: {url}"
+        );
     }
 }

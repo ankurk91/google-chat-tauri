@@ -11,19 +11,13 @@ use tauri::{AppHandle, Manager};
 
 use crate::config::Prefs;
 
-pub fn log_startup(app: &AppHandle, prefs: &Prefs, launched_hidden: bool) {
-    let info = app.package_info();
-    let profile = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
-    log::info!(
-        "{} {} ({profile}) — {}",
-        info.name,
-        info.version,
-        app.config().identifier
-    );
+/// The facts a bug report cannot do without, as `label: value` lines.
+///
+/// Two places need exactly these and they must not drift apart: the log header
+/// below, and the environment block `urls::issue_url` pre-fills. A report whose
+/// environment disagrees with its attached log is worse than one with neither.
+pub fn facts() -> Vec<String> {
+    let mut facts = Vec::new();
 
     let mut platform = format!(
         "platform: {} {}",
@@ -33,7 +27,7 @@ pub fn log_startup(app: &AppHandle, prefs: &Prefs, launched_hidden: bool) {
     if let Some(detail) = os_detail() {
         platform.push_str(&format!(" — {detail}"));
     }
-    log::info!("{platform}");
+    facts.push(platform);
 
     // The webview *is* the app here, and its version explains more failures
     // than anything else on this list. wry reports a bare number, which means
@@ -45,19 +39,46 @@ pub fn log_startup(app: &AppHandle, prefs: &Prefs, launched_hidden: bool) {
     } else {
         "WebView2"
     };
-    match tauri::webview_version() {
-        Ok(version) => log::info!("webview: {engine} {version}"),
-        Err(e) => log::warn!("webview: {engine} version unavailable: {e}"),
-    }
+    facts.push(match tauri::webview_version() {
+        Ok(version) => format!("webview: {engine} {version}"),
+        Err(e) => format!("webview: {engine} version unavailable: {e}"),
+    });
 
     // Which desktop, and X11 or Wayland: the tray, the badge and the
     // notification behaviour all differ along those two axes.
     #[cfg(target_os = "linux")]
-    log::info!(
+    facts.push(format!(
         "session: {} on {}",
         env_or_unknown("XDG_CURRENT_DESKTOP"),
         env_or_unknown("XDG_SESSION_TYPE")
+    ));
+
+    facts
+}
+
+/// `debug` or `release`. Which one it is changes the log level, the tray menu
+/// and whether autostart registers at all, so a report has to say.
+pub fn profile() -> &'static str {
+    if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    }
+}
+
+pub fn log_startup(app: &AppHandle, prefs: &Prefs, launched_hidden: bool) {
+    let info = app.package_info();
+    log::info!(
+        "{} {} ({}) — {}",
+        info.name,
+        info.version,
+        profile(),
+        app.config().identifier
     );
+
+    for fact in facts() {
+        log::info!("{fact}");
+    }
 
     if let Ok(dir) = app.path().app_config_dir() {
         log::info!("config dir: {}", dir.display());
@@ -123,5 +144,15 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn missing_environment_does_not_panic() {
         assert_eq!(env_or_unknown("GOOGLE_CHAT_NOT_A_REAL_VAR"), "unknown");
+    }
+
+    #[test]
+    fn facts_are_labelled_and_never_empty() {
+        // The issue body and the log header both parse nothing and print these
+        // verbatim, so the only contract is that each line names itself.
+        let facts = facts();
+        assert!(facts.iter().any(|f| f.starts_with("platform: ")));
+        assert!(facts.iter().any(|f| f.starts_with("webview: ")));
+        assert!(facts.iter().all(|f| f.contains(": ")));
     }
 }
