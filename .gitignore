@@ -2,6 +2,10 @@ node_modules/
 dist/
 *.log
 
+# pnpm keeps its store in the home directory by default; this catches the
+# in-repo layout a `store-dir` setting or a container can produce.
+.pnpm-store/
+
 # Rust / Tauri
 /src-tauri/target/
 /src-tauri/gen/
@@ -14,13 +18,7 @@ dist/
 !.vscode/extensions.json
 .idea/
 *.iml
-*.swp
-*.swo
-*~
-.\#*
-\#*\#
-.nvim.lua
-.zed/
+.cursor/
 
 # Operating system junk
 .DS_Store
