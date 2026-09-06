@@ -8,18 +8,27 @@ pub fn logout_url() -> String {
     format!("https://www.google.com/accounts/Logout?continue={APP_URL}")
 }
 
-/// Where the update check asks what the newest release is.
+/// Where the update check asks what has been released.
+///
+/// The list, not `/releases/latest`: that endpoint is documented as "the most
+/// recent non-prerelease, non-draft release", so a repository whose only
+/// release is a pre-release has no latest at all and answers 404 -- which is
+/// indistinguishable from a repository that has never released anything.
+/// Measured against this one on 2026-09-06, with v0.0.1 published as a
+/// pre-release: `/releases/latest` 404, `/releases` one entry.
 ///
 /// Derived from `CARGO_PKG_REPOSITORY` for the same reason the issue URL is:
 /// the repository is named once, in `Cargo.toml`, and a fork or a rename does
 /// not leave a hard-coded owner behind pointing everyone at the original.
-pub fn latest_release_api() -> String {
+pub fn releases_api() -> String {
     let path = env!("CARGO_PKG_REPOSITORY")
         .trim_end_matches('/')
         .trim_end_matches(".git")
         .trim_start_matches("https://github.com/");
 
-    format!("https://api.github.com/repos/{path}/releases/latest")
+    // A handful is plenty: the newest few are the only ones that can be newer
+    // than what is running.
+    format!("https://api.github.com/repos/{path}/releases?per_page=10")
 }
 
 /// How long the pre-filled issue URL is allowed to get.
@@ -262,12 +271,13 @@ mod tests {
 
     #[test]
     fn the_release_api_url_points_at_this_repository() {
-        let url = latest_release_api();
+        let url = releases_api();
         assert!(
             url.starts_with("https://api.github.com/repos/"),
             "not an api.github.com URL: {url}"
         );
-        assert!(url.ends_with("/releases/latest"), "wrong endpoint: {url}");
+        // The list. `/releases/latest` cannot see a pre-release.
+        assert!(url.contains("/releases?"), "wrong endpoint: {url}");
         // No scheme left in the middle: the owner/name pair, and nothing else.
         assert_eq!(url.matches("https://").count(), 1, "{url}");
         assert!(!url.contains(".git/"), "{url}");

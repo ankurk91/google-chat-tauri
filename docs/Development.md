@@ -260,8 +260,16 @@ the config file — so nobody gets the same dialog twice a day until they update
 that and always answers, because a manual check that appears to do nothing is indistinguishable from a broken one.
 **Preferences → Check for Updates Automatically** turns the scheduled half off; the thread stays, and skips the request.
 
-A private repository, one with no releases, and a typo in the URL are all `404` here, and all mean "nothing to offer".
-That is the response the endpoint gives today.
+It asks `/releases`, **not** `/releases/latest`. GitHub documents the latter as "the most recent non-prerelease,
+non-draft release", so a repository whose only release is a pre-release has no latest at all and answers 404 — which is
+indistinguishable from having never released anything. Measured on 2026-09-06 with v0.0.1 published as a pre-release:
+`/releases/latest` 404, `/releases` one entry. Drafts are skipped; the highest version wins, not the first listed, since
+GitHub orders by creation date and a patch to an older line can be published after a newer release.
+
+Pre-releases count as updates while the running version is itself pre-1.0 or carries a pre-release tag. The whole of
+`0.x` is this app's pre-release era, and someone on 0.0.1 who is never told about 0.0.2 is not being served; once it
+reaches 1.0.0, a stable user stops being offered betas. A `404` still means "nothing to offer" — a private repository, or
+a typo in the URL.
 
 The HTTP client is `ureq` with **native-tls**, so TLS comes from the platform — OpenSSL on Linux, which WebKitGTK
 already pulls in, Schannel on Windows, Security.framework on macOS. Naming the provider in the request config is not

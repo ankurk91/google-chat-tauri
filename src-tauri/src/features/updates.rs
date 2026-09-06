@@ -114,32 +114,40 @@ pub fn check_now(app: &AppHandle) {
 
     // Off the calling thread: this is a menu handler, and the menu is on the
     // thread that would otherwise be drawing the window.
-    std::thread::spawn(move || match check() {
-        Outcome::Available { version, url } => {
-            let prefs = app
-                .state::<Config>()
-                .update(|prefs| prefs.offered_version = version.clone());
-            config::save(&app, &prefs);
+    std::thread::spawn(move || {
+        let outcome = check();
+        // Logged, because a manual check that only opens a dialog leaves no
+        // trace of what it decided -- and "I clicked it and nothing happened"
+        // is not something a log should be silent about.
+        log::info!("updates: checked on request -> {outcome:?}");
 
-            offer(&app, &version, &url);
-        }
-        Outcome::Current => {
-            tell(
-                &app,
-                "No updates",
-                &format!("You have the latest version ({}).", current()),
-            );
-        }
-        Outcome::NoReleases => {
-            tell(&app, "No updates", "There are no published releases yet.");
-        }
-        Outcome::Failed(why) => {
-            log::warn!("updates: check failed: {why}");
-            tell(
-                &app,
-                "Could not check for updates",
-                "GitHub could not be reached. Check your connection and try again.",
-            );
+        match outcome {
+            Outcome::Available { version, url } => {
+                let prefs = app
+                    .state::<Config>()
+                    .update(|prefs| prefs.offered_version = version.clone());
+                config::save(&app, &prefs);
+
+                offer(&app, &version, &url);
+            }
+            Outcome::Current => {
+                tell(
+                    &app,
+                    "No updates",
+                    &format!("You have the latest version ({}).", current()),
+                );
+            }
+            Outcome::NoReleases => {
+                tell(&app, "No updates", "There are no published releases yet.");
+            }
+            Outcome::Failed(why) => {
+                log::warn!("updates: check failed: {why}");
+                tell(
+                    &app,
+                    "Could not check for updates",
+                    "GitHub could not be reached. Check your connection and try again.",
+                );
+            }
         }
     });
 }
@@ -148,7 +156,7 @@ pub fn check_now(app: &AppHandle) {
 ///
 /// Blocking, so never call this on the main thread.
 fn check() -> Outcome {
-    let url = crate::urls::latest_release_api();
+    let url = crate::urls::releases_api();
     log::debug!("updates: asking {url}");
 
     // The provider has to be named, not just compiled in: ureq defaults to
@@ -173,40 +181,62 @@ fn check() -> Outcome {
 
     let mut response = match response {
         Ok(response) => response,
-        // A private repository, a repository with no releases at all, and a
-        // typo in the URL are all 404 here -- there is nothing to offer in any
-        // of those cases, and none of them is worth a dialog full of jargon.
+        // A private repository and a typo in the URL are both 404 here, and
+        // neither is worth a dialog full of jargon.
         Err(ureq::Error::StatusCode(404)) => return Outcome::NoReleases,
         Err(e) => return Outcome::Failed(e.to_string()),
     };
 
-    let release: Release = match response.body_mut().read_json() {
-        Ok(release) => release,
-        Err(e) => return Outcome::Failed(format!("unreadable release: {e}")),
+    let releases: Vec<Release> = match response.body_mut().read_json() {
+        Ok(releases) => releases,
+        Err(e) => return Outcome::Failed(format!("unreadable releases: {e}")),
     };
 
-    if release.draft || release.prerelease {
-        log::debug!("updates: latest release is a draft or prerelease; ignoring");
-        return Outcome::NoReleases;
-    }
+    let running = match semver::Version::parse(normalise(current())) {
+        Ok(running) => running,
+        Err(e) => return Outcome::Failed(format!("unreadable own version: {e}")),
+    };
 
-    match compare(&release.tag_name, current()) {
-        Some(true) => Outcome::Available {
-            version: normalise(&release.tag_name).to_string(),
-            url: release.html_url,
+    match newest(&releases, &running) {
+        Some((release, version)) if version > running => Outcome::Available {
+            version: version.to_string(),
+            url: release.html_url.clone(),
         },
-        Some(false) => Outcome::Current,
-        None => Outcome::Failed(format!("unreadable tag: {}", release.tag_name)),
+        Some(_) => Outcome::Current,
+        None => Outcome::NoReleases,
     }
 }
 
-/// Is `tag` a newer version than `running`? `None` if either is not a version.
+/// The highest version worth offering, out of what GitHub returned.
 ///
-/// Kept separate from the request so the comparison can be tested without one.
-fn compare(tag: &str, running: &str) -> Option<bool> {
-    let latest = semver::Version::parse(normalise(tag)).ok()?;
-    let running = semver::Version::parse(normalise(running)).ok()?;
-    Some(latest > running)
+/// GitHub lists releases newest-first by creation, which is usually the same
+/// order as by version and does not have to be -- a patch to an older line gets
+/// published after a newer release. Comparing versions is the answer to the
+/// question actually being asked.
+fn newest<'a>(
+    releases: &'a [Release],
+    running: &semver::Version,
+) -> Option<(&'a Release, semver::Version)> {
+    releases
+        .iter()
+        .filter(|release| !release.draft)
+        .filter(|release| !release.prerelease || wants_prereleases(running))
+        .filter_map(|release| {
+            semver::Version::parse(normalise(&release.tag_name))
+                .ok()
+                .map(|version| (release, version))
+        })
+        .max_by(|left, right| left.1.cmp(&right.1))
+}
+
+/// Whether pre-releases count as updates for whoever is running this.
+///
+/// They do while the app is itself pre-1.0 -- every release of it is a
+/// pre-release, and someone on 0.0.1 who is not told about 0.0.2 is not being
+/// served -- and for anyone already running a tagged pre-release. Once this
+/// reaches 1.0.0, a stable user stops being offered betas.
+fn wants_prereleases(running: &semver::Version) -> bool {
+    running.major == 0 || !running.pre.is_empty()
 }
 
 /// Release tags carry a leading `v`; `CARGO_PKG_VERSION` does not.
@@ -262,39 +292,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_higher_tag_is_an_update() {
-        assert_eq!(compare("v1.1.0", "1.0.0"), Some(true));
-        assert_eq!(compare("v2.0.0", "1.9.9"), Some(true));
-        assert_eq!(compare("1.0.1", "1.0.0"), Some(true));
+    fn the_leading_v_on_a_tag_is_not_part_of_the_version() {
+        // Tags carry it, CARGO_PKG_VERSION does not, and both forms have to
+        // mean the same version or every check reports an update.
+        assert_eq!(normalise("v1.0.0"), "1.0.0");
+        assert_eq!(normalise(" 1.0.0 "), "1.0.0");
+
+        let releases = [release("v1.0.0", false, false)];
+        assert_eq!(
+            newest(&releases, &version("1.0.0")).unwrap().1,
+            version("1.0.0")
+        );
     }
 
     #[test]
-    fn the_same_version_is_not_an_update() {
-        assert_eq!(compare("v1.0.0", "1.0.0"), Some(false));
-        // Tags in the wild carry the v inconsistently; both forms are the same
-        // version, and neither is an update over the other.
-        assert_eq!(compare("1.0.0", "v1.0.0"), Some(false));
-    }
+    fn a_prerelease_sorts_below_the_release_it_precedes() {
+        // semver's own rule, and the one this relies on: someone already on
+        // 1.1.0 must not be offered 1.1.0-beta.1 as an upgrade.
+        assert!(version("1.1.0-beta.1") < version("1.1.0"));
 
-    #[test]
-    fn an_older_tag_is_not_an_update() {
-        assert_eq!(compare("v0.9.0", "1.0.0"), Some(false));
-        assert_eq!(compare("v1.0.0", "1.0.1"), Some(false));
-    }
-
-    #[test]
-    fn a_prerelease_is_older_than_the_release_it_precedes() {
-        // semver's own rule, and the one we want: 1.1.0-beta.1 must not be
-        // offered to someone already on 1.1.0.
-        assert_eq!(compare("v1.1.0-beta.1", "1.1.0"), Some(false));
-        assert_eq!(compare("v1.1.0-beta.1", "1.0.0"), Some(true));
-    }
-
-    #[test]
-    fn a_tag_that_is_not_a_version_is_not_guessed_at() {
-        assert_eq!(compare("latest", "1.0.0"), None);
-        assert_eq!(compare("v1", "1.0.0"), None);
-        assert_eq!(compare("", "1.0.0"), None);
+        let releases = [release("v1.1.0-beta.1", false, true)];
+        let picked = newest(&releases, &version("1.1.0-beta.1")).unwrap();
+        assert!(picked.1 <= version("1.1.0-beta.1"), "would offer itself");
     }
 
     #[test]
@@ -302,6 +321,104 @@ mod tests {
         // If this fails, every check reports Failed and nobody finds out until
         // a release exists.
         assert!(semver::Version::parse(current()).is_ok(), "{}", current());
+    }
+
+    fn release(tag: &str, draft: bool, prerelease: bool) -> Release {
+        Release {
+            tag_name: tag.into(),
+            html_url: format!("https://example.test/tag/{tag}"),
+            draft,
+            prerelease,
+        }
+    }
+
+    fn version(v: &str) -> semver::Version {
+        semver::Version::parse(v).unwrap()
+    }
+
+    #[test]
+    fn a_prerelease_is_offered_to_someone_on_a_pre_1_0_build() {
+        // The whole of 0.x is this app's pre-release era: every release of it
+        // is tagged pre-release, and someone on 0.0.1 must still hear about
+        // 0.0.2. This is the case that shipped broken.
+        let releases = [release("v0.0.2", false, true)];
+        let picked = newest(&releases, &version("0.0.1")).unwrap();
+        assert_eq!(picked.1, version("0.0.2"));
+    }
+
+    #[test]
+    fn a_prerelease_is_not_offered_to_someone_on_a_stable_build() {
+        let releases = [release("v1.1.0-beta.1", false, true)];
+        assert!(newest(&releases, &version("1.0.0")).is_none());
+    }
+
+    #[test]
+    fn someone_already_on_a_beta_hears_about_the_next_one() {
+        let releases = [release("v1.1.0-beta.2", false, true)];
+        let picked = newest(&releases, &version("1.1.0-beta.1")).unwrap();
+        assert_eq!(picked.1, version("1.1.0-beta.2"));
+    }
+
+    #[test]
+    fn drafts_are_never_offered() {
+        let releases = [release("v9.9.9", true, false)];
+        assert!(newest(&releases, &version("0.0.1")).is_none());
+    }
+
+    #[test]
+    fn the_highest_version_wins_not_the_first_listed() {
+        // GitHub lists by creation date. A patch to an older line published
+        // after a newer release would otherwise win.
+        let releases = [
+            release("v0.9.1", false, false),
+            release("v1.2.0", false, false),
+            release("v1.0.5", false, false),
+        ];
+        let picked = newest(&releases, &version("1.0.0")).unwrap();
+        assert_eq!(picked.1, version("1.2.0"));
+    }
+
+    #[test]
+    fn a_tag_that_is_not_a_version_is_skipped_not_fatal() {
+        let releases = [
+            release("nightly", false, false),
+            release("v0.0.2", false, true),
+        ];
+        let picked = newest(&releases, &version("0.0.1")).unwrap();
+        assert_eq!(picked.1, version("0.0.2"));
+    }
+
+    #[test]
+    fn no_releases_at_all_is_not_an_error() {
+        assert!(newest(&[], &version("0.0.1")).is_none());
+    }
+
+    #[test]
+    fn the_live_payload_for_v0_0_1_is_read_correctly() {
+        // Trimmed from what api.github.com actually returned for this
+        // repository on 2026-09-06, pre-release and all.
+        let body = r#"[{
+            "html_url": "https://github.com/ankurk91/google-chat-tauri/releases/tag/v0.0.1",
+            "tag_name": "v0.0.1",
+            "name": "Google Chat v0.0.1",
+            "draft": false,
+            "prerelease": true,
+            "assets": [
+                {"name": "google-chat-tauri_0.0.1_linux-amd64.deb"},
+                {"name": "google-chat-tauri_0.0.1_linux-amd64.AppImage"},
+                {"name": "google-chat-tauri_0.0.1_darwin-universal.dmg"},
+                {"name": "google-chat-tauri_0.0.1_darwin-universal.app"},
+                {"name": "google-chat-tauri_0.0.1_windows-x64_setup.exe"}
+            ]
+        }]"#;
+
+        let releases: Vec<Release> = serde_json::from_str(body).unwrap();
+        assert_eq!(releases.len(), 1);
+        assert!(releases[0].prerelease);
+
+        // Someone running 0.0.1 is current; someone on 0.0.0 is behind.
+        assert!(newest(&releases, &version("0.0.1")).unwrap().1 == version("0.0.1"));
+        assert!(newest(&releases, &version("0.0.0")).unwrap().1 > version("0.0.0"));
     }
 
     #[test]
@@ -322,7 +439,9 @@ mod tests {
         assert_eq!(release.tag_name, "v1.1.0");
         assert!(release.html_url.ends_with("/tag/v1.1.0"));
         assert!(!release.draft && !release.prerelease);
-        assert_eq!(compare(&release.tag_name, "1.0.0"), Some(true));
+
+        let picked = newest(std::slice::from_ref(&release), &version("1.0.0")).unwrap();
+        assert!(picked.1 > version("1.0.0"));
     }
 
     #[test]
