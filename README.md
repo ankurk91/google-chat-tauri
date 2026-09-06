@@ -7,14 +7,19 @@
 
 [![ci](https://github.com/ankurk91/google-chat-tauri/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ankurk91/google-chat-tauri/actions/workflows/ci.yml)
 [![release](https://github.com/ankurk91/google-chat-tauri/actions/workflows/release.yml/badge.svg)](https://github.com/ankurk91/google-chat-tauri/actions/workflows/release.yml)
+[![latest](https://img.shields.io/github/v/release/ankurk91/google-chat-tauri?sort=semver&display_name=tag&label=latest&cacheSeconds=3600)](https://github.com/ankurk91/google-chat-tauri/releases/latest)
+[![downloads](https://img.shields.io/github/downloads/ankurk91/google-chat-tauri/total?cacheSeconds=3600)](https://somsubhra.github.io/github-release-stats/?username=ankurk91&repository=google-chat-tauri&page=1&per_page=30)
 [![tauri](https://img.shields.io/badge/built%20with-Tauri%20v2-24C8DB?logo=tauri&logoColor=white)](https://v2.tauri.app)
 [![licence](https://img.shields.io/badge/licence-GPL--3.0--only-blue.svg)](LICENSE.txt)
 
 An unofficial desktop app for [Google Chat](https://chat.google.com) on Linux, macOS and Windows.
 
 It puts Chat in a real window with a tray icon, an unread indicator and native desktop notifications, instead of a
-browser tab that gets lost among the others. The app uses your operating system's built-in web engine rather than
-shipping its own, so the Linux installer is about 3 MB.
+browser tab that gets lost among the others.
+
+Unlike an Electron app, it ships no browser of its own — it uses the web engine your system already has. That is why the
+Linux `.deb` is ~3 MB, where the [Electron version of this app](https://github.com/ankurk91/google-chat-electron), no
+longer maintained, was 66 MB.
 
 > Not affiliated with, endorsed by, or sponsored by Google. "Google Chat" and
 > the Chat logo are trademarks of Google LLC.
