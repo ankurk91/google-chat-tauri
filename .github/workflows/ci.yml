@@ -59,3 +59,6 @@ jobs:
 
       - name: Check injected script parses
         run: node --check src-tauri/src/inject/chat.js
+
+      - name: Check injected script behaves
+        run: node scripts/chatjs-test.js
