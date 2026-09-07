@@ -254,9 +254,12 @@ distribution one, so read "Wayland" wherever it says Ubuntu.
 
 What is left, in the order it matters:
 
-1. **macOS is unverified; Windows has now been run.** A manual `release` run produces the dmg, the .app and the NSIS
-   installer; nobody has ever launched the macOS ones, so the dock badge and whether notifications arrive there are
-   still unknown.
+1. **macOS and Windows have both now been run, briefly.** A `release` run produces the dmg, the .app and the NSIS
+   installer, and both have been launched on real hardware by the maintainer — not by anything in `scripts/`, which
+   cannot reach either platform, so treat all of it as reported rather than machine-verified.
+
+   macOS: a quick pass found nothing wrong, past the Gatekeeper block every unsigned build gets. Still unconfirmed
+   there, because a quick pass would not touch them: the dock badge, and whether notifications arrive at all.
 
    Windows 11 has been launched and reported on (by the maintainer, on hardware this repo's harnesses cannot reach —
    none of the following is machine-verified here):
@@ -290,5 +293,5 @@ implementation judged not worth it. Left-click opens the menu, with Toggle first
 ## Releasing
 
 Bump the version in `package.json`, `src-tauri/Cargo.toml` and
-`src-tauri/tauri.conf.json`, then push a `v*` tag. Builds are unsigned, so macOS needs right-click → Open and Windows
-shows a SmartScreen warning.
+`src-tauri/tauri.conf.json`, then push a `v*` tag. Builds are unsigned, so both macOS and Windows block the first
+launch; the way past each is in the release notes `release.yml` writes, and in Troubleshooting.md.

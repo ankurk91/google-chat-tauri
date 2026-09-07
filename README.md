@@ -47,8 +47,8 @@ longer maintained, was 66 MB.
   page. **File → Sign Out** ends the session without touching your browser's, and signing back in afterwards does not
   need the app's data wiped first.
 - **Waits out a missing network** — with no connection at startup, a notification tells you and the window shows a
-  readable page with a **Try again** button, rather than the web engine's own unstyled error. It keeps watching, so
-  Chat loads by itself within half a minute of the connection coming back.
+  readable page with a **Try again** button, rather than the web engine's own unstyled error. It keeps watching, so Chat
+  loads by itself within half a minute of the connection coming back.
 - **A way back from a wedged session** — **Help → Reset App Data** signs you out, returns every preference to its
   default and restarts the app clean. **Show Logs** and **Report an Issue** are next to it.
 
@@ -141,8 +141,16 @@ If you use AppImageLauncher or `appimaged`, it will have added a menu entry of i
 
 The macOS dmg is universal — Apple silicon and Intel.
 
-The builds are unsigned, so your system will warn you on first launch — on macOS, right-click the app and choose
-**Open**; on Windows, click through the SmartScreen warning.
+The builds are unsigned, so the first launch is blocked. Once past it, the app opens normally from then on.
+
+**macOS** — the first dialog offers to move the app to the Bin. Do not:
+
+1. Click **Done**.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll to **Security**, where a line names Google Chat as blocked.
+4. Click **Open Anyway** and confirm with your password or Touch ID.
+
+**Windows** — click **More info**, then **Run anyway**.
 
 To uninstall, drag the app out of **Applications** on macOS, or use **Add or remove programs** on Windows.
 

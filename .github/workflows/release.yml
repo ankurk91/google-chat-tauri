@@ -92,8 +92,13 @@ jobs:
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Google Chat {0}', github.ref_name) || '' }}
           releaseBody: |
-            Builds are unsigned. macOS will need right-click > Open on first
-            launch; Windows will show a SmartScreen warning.
+            Builds are unsigned, so the first launch is blocked.
+
+            macOS: the dialog offers to move the app to the Bin -- click Done
+            instead, then System Settings > Privacy & Security > Security >
+            Open Anyway.
+
+            Windows: More info > Run anyway.
           releaseDraft: true
           prerelease: false
           uploadWorkflowArtifacts: true

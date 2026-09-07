@@ -27,6 +27,18 @@ cp /usr/share/applications/'Google Chat.desktop' ~/.local/share/applications/
 
 Then put `env WEBKIT_DISABLE_DMABUF_RENDERER=1` at the front of that copy's `Exec=` line.
 
+**macOS refuses to open it: "Apple could not verify it is free of malware".** The builds are unsigned — nobody pays
+Apple's developer fee for this — so macOS blocks the first launch. The dialog offers to move the app to the Bin; do not
+take it.
+
+1. Click **Done**.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll to **Security**, where a line names Google Chat as blocked.
+4. Click **Open Anyway**, and confirm with your password or Touch ID.
+
+Every launch after that is normal. From a terminal,
+`xattr -d com.apple.quarantine "/Applications/Google Chat.app"` does the same thing.
+
 **Notifications do not appear.** They come from your desktop's own notification service, so check Chat's in-app
 notification settings first (**⚙ Settings → Notifications**), then your desktop's Do Not Disturb.
 
