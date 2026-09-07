@@ -68,7 +68,7 @@ afterwards.
 | OS      | Version                                                  | Architecture                        | Download            |
 |---------|----------------------------------------------------------|-------------------------------------|---------------------|
 | Linux   | glibc 2.39+ — Ubuntu 24.04, Mint 22, Debian 13 and newer | x86_64                              | `.deb`, `.AppImage` |
-| macOS   | 10.15 Catalina and newer                                 | Apple silicon and Intel (universal) | `.dmg`              |
+| macOS   | 15 Sequoia and newer                                     | Apple silicon and Intel (universal) | `.dmg`              |
 | Windows | 10 (1803+) and 11                                        | x64                                 | `.exe` installer    |
 
 Nothing is built for 32-bit, ARM Linux, or Apple silicon separately from the universal build. Windows needs the WebView2

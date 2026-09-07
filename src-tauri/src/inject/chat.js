@@ -7,10 +7,11 @@
  * everything below must be idempotent per document.
  *
  * No bundler and no build step: what is written here is what runs, so it has to
- * be what every supported webview already understands. That is ES2015-2018 --
- * const, let, arrow functions, classes, template literals, Map, for..of. It is
- * *not* `?.` or `??`: those need Safari 13.1 and the macOS floor is 10.15.0,
- * which shipped Safari 13.0.
+ * be what every supported webview already understands. The floors are WebKitGTK
+ * on Ubuntu 24.04, WKWebView on macOS 15 (Safari 18) and evergreen WebView2, so
+ * anything through ES2020 -- including `?.` and `??` -- is safe. The code below
+ * predates the macOS 15 floor and mostly sticks to ES2015-2018; that is habit,
+ * not a constraint.
  */
 (function () {
   'use strict';
