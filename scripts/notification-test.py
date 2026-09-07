@@ -47,6 +47,17 @@ ACTIVATED = "] notification activated: id="
 # The same text as the format string in the source, which has no log prefix.
 ACTIVATED_IN_SOURCE = ACTIVATED.removeprefix("] ")
 
+# Positive evidence that the daemon accepted a notification.
+#
+# "no error in the log" is not evidence: a notification that was never even
+# attempted satisfies it too. That is not hypothetical -- this fires through
+# `--test-notification`, which goes via the page's `invoke`, and the ACL only
+# answers on mail.google.com and chat.google.com. Run this signed out, when the
+# window sits on accounts.google.com, and the call is rejected, nothing is shown,
+# nothing is logged, and the check used to pass anyway.
+SHOWN = "] notification: shown id="
+SHOWN_IN_SOURCE = SHOWN.removeprefix("] ")
+
 
 def check_marker():
     """Fail loudly if the log line this counts has been renamed.
@@ -57,11 +68,13 @@ def check_marker():
     """
     if not SOURCE.exists():
         return  # run from somewhere else; the count is on its own
-    if ACTIVATED_IN_SOURCE not in SOURCE.read_text(errors="replace"):
-        sys.exit(
-            f"{SOURCE} no longer logs {ACTIVATED_IN_SOURCE!r} -- update ACTIVATED "
-            f"in this script, or it will count nothing and pass regardless"
-        )
+    src = SOURCE.read_text(errors="replace")
+    for marker, name in ((ACTIVATED_IN_SOURCE, "ACTIVATED"), (SHOWN_IN_SOURCE, "SHOWN")):
+        if marker not in src:
+            sys.exit(
+                f"{SOURCE} no longer logs {marker!r} -- update {name} in this "
+                f"script, or it will match nothing and pass regardless"
+            )
 
 
 def watch_pointer(seconds):
@@ -119,10 +132,15 @@ def main():
         touched = watch_pointer(SETTLE)
 
         log = LOG.read_text(errors="replace")
-        shown = "failed to show notification" not in log
+        # Both halves: the daemon said yes, and nothing said no.
+        shown = SHOWN in log and "failed to show notification" not in log
         activations = log.count(ACTIVATED)
 
-        print(f"  {'PASS' if shown else 'FAIL'}  notification was sent")
+        detail = ""
+        if not shown:
+            detail = ("  -- the app logged no successful show; if the window is "
+                      "signed out the ACL will have refused the page's invoke")
+        print(f"  {'PASS' if shown else 'FAIL'}  notification was sent{detail}")
 
         if touched:
             print(f"  SKIP  self-activation  -- pointer moved or clicked during the "

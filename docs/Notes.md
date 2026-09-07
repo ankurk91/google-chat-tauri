@@ -144,11 +144,22 @@ running, see [Development.md](Development.md).
   process and read thread 1 before theorising. gdb has to *launch* the app to do that, since
   `kernel.yama.ptrace_scope` is 1 here and attaching after the fact is refused.
 
-  One main-thread block *is* certain, and worth fixing on its own account: `show_notification` is a synchronous Tauri
-  command, and Tauri runs those on the main thread, so `notify_rust`'s blocking `show()` round-trip happens there.
-  Measured against gnome-shell 50.1 over 25 `Notify` calls: median 48 ms, p90 86 ms, **max 520 ms** -- including about
-  20 ms of `gdbus` spawn that the app does not pay. Every notification therefore stalls the titlebar for tens to
-  hundreds of milliseconds, and a burst compounds. `set_unread_count` and the tray handler are on that thread too.
+  One main-thread block was certain, and is now fixed. `show_notification` is a synchronous Tauri command, and Tauri
+  runs those on the main thread, so `notify_rust`'s blocking `show()` round-trip used to happen there -- measured
+  against gnome-shell 50.1 over 25 `Notify` calls: median 48 ms, p90 86 ms, **max 520 ms**, including about 20 ms of
+  `gdbus` spawn the app does not pay. Every notification stalled the titlebar for that long, and a burst compounded it.
+  `features::notifications::show_linux` now hands the work to one long-lived worker thread; `deliver` does the talking.
+  One worker rather than a thread per notification, so a burst neither spawns threads unboundedly nor lets popups reach
+  the daemon out of order, which serialising on the main thread used to give for free. Verified on Ubuntu 26.04 with a
+  real notification: the process gains a `notifications` thread parked on its channel and a `notif-wait-<id>` thread
+  parked on the click, while the main thread stays in `poll_schedule_timeout`.
+
+  Two callers still block that thread and were left alone, being far cheaper than a notification: `set_unread_count`
+  (badge, tray icon and title) and the tray menu handler. Measure before assuming they are free.
+
+  Naming those threads is not cosmetic: Linux gives a new thread the *creating* thread's name, so the click-waiter
+  spawned from the worker inherited `notifications` and the process showed two threads by that name, only one of which
+  was the worker. That is confusing at exactly the moment you are reading a thread list to explain a freeze.
 - **Chat costs about 1.8 GB of WebKitGTK, and the debug build is not why.** Measured on Ubuntu 26.04 / GNOME 50.1 /
   Wayland, signed in, sampling RSS every 30 seconds: 690 MB parked on the sign-in page, then 1764-2070 MB with Chat
   loaded, mean 1817 MB across twenty samples. In one 2107 MB reading the `WebKitWebProcess` holding the page was

@@ -117,8 +117,78 @@ pub fn activate_last(app: &AppHandle) {
     activated(app, id);
 }
 
+/// What `deliver` needs, owned, so it can cross a thread boundary.
+#[cfg(target_os = "linux")]
+struct Job {
+    app: AppHandle,
+    id: u32,
+    title: String,
+    body: Option<String>,
+}
+
+/// Hand the notification to a worker thread instead of showing it here.
+///
+/// `Notification::show()` is a blocking D-Bus round-trip to the daemon, and the
+/// callers that matter are all on the GTK main thread: `show_notification` is a
+/// synchronous Tauri command, and Tauri runs those on the main thread, while the
+/// tray's Test Notification is a menu handler. That is also the thread that
+/// draws and services the window's own close, minimise and maximise buttons --
+/// mutter gives Wayland clients no server-side titlebar, so GTK draws them in
+/// this process -- so showing a notification there stalls them. Measured against
+/// gnome-shell 50.1 over 25 calls: median 48 ms, max 520 ms, and a burst of
+/// messages compounds it. See the titlebar entry in `docs/Notes.md`.
+///
+/// One worker, not a thread per notification: a burst then neither spawns
+/// threads unboundedly nor lets the popups reach the daemon out of order, which
+/// serialising on the main thread used to give for free.
 #[cfg(target_os = "linux")]
 fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
+    use std::sync::{mpsc, Mutex, OnceLock};
+
+    static QUEUE: OnceLock<Mutex<mpsc::Sender<Job>>> = OnceLock::new();
+
+    let queue = QUEUE.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Job>();
+        // Detached deliberately: it lives as long as the process, and there is
+        // nothing to join or report back.
+        let spawned = std::thread::Builder::new()
+            .name("notifications".into())
+            .spawn(move || {
+                for job in rx {
+                    deliver(&job.app, job.id, &job.title, job.body.as_deref());
+                }
+            });
+
+        if let Err(e) = spawned {
+            log::error!("notification: could not start the worker thread: {e}");
+        }
+
+        Mutex::new(tx)
+    });
+
+    let job = Job {
+        app: app.clone(),
+        id,
+        title: title.to_owned(),
+        body: body.map(str::to_owned),
+    };
+
+    // A send only fails once the worker is gone, which it never is while the
+    // process runs -- log rather than unwrap, because dropping a notification is
+    // not worth taking the app down for.
+    match queue.lock() {
+        Ok(tx) => {
+            if let Err(e) = tx.send(job) {
+                log::error!("notification: worker gone, dropped a notification: {e}");
+            }
+        }
+        Err(e) => log::error!("notification: queue lock poisoned: {e}"),
+    }
+}
+
+/// Actually talk to the daemon. Runs on the worker thread, never the caller's.
+#[cfg(target_os = "linux")]
+fn deliver(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
     let mut builder = notify_rust::Notification::new();
     builder
         .summary(title)
@@ -134,8 +204,13 @@ fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
     }
 
     if !actions_enabled() {
-        if let Err(e) = builder.show() {
-            log::error!("notification: failed to show notification: {e}");
+        match builder.show() {
+            // Logged on success as well as failure: the absence of an error is
+            // also what a notification nobody ever attempted looks like, which
+            // let `scripts/notification-test.py` pass vacuously while the page
+            // was on an origin the ACL turns down. Positive evidence or none.
+            Ok(_) => log::debug!("notification: shown id={id} actions=no"),
+            Err(e) => log::error!("notification: failed to show notification: {e}"),
         }
         return;
     }
@@ -150,17 +225,30 @@ fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
         }
     };
 
-    // wait_for_action blocks until the notification is acted on, so it cannot
-    // run on the main thread.
+    log::debug!("notification: shown id={id} actions=yes");
+
+    // wait_for_action blocks until the notification is acted on, so it needs a
+    // thread of its own even here: on the worker it would hold up every later
+    // notification until this one was clicked or dismissed.
+    //
+    // Named, because Linux gives a new thread the *creating* thread's name and
+    // this is created from the worker -- so without it, `ps` and gdb show two
+    // threads called "notifications" and only one of them is the worker.
     let app = app.clone();
-    std::thread::spawn(move || {
-        handle.wait_for_action(|action| {
-            // "__closed" means dismissed, which we ignore.
-            if action == "default" {
-                activated(&app, id);
-            }
+    let waiter = std::thread::Builder::new()
+        .name(format!("notif-wait-{id}"))
+        .spawn(move || {
+            handle.wait_for_action(|action| {
+                // "__closed" means dismissed, which we ignore.
+                if action == "default" {
+                    activated(&app, id);
+                }
+            });
         });
-    });
+
+    if let Err(e) = waiter {
+        log::error!("notification: no thread to wait for a click on id={id}: {e}");
+    }
 }
 
 /// Whether to register a clickable "default" action on Linux notifications.
