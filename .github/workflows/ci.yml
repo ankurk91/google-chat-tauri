@@ -22,6 +22,9 @@ on:
 permissions:
   contents: read
 
+# Keep the `checks-` prefix. When `release` calls this workflow the github
+# context is the caller's, so `github.workflow` reads `release` -- without the
+# prefix these checks share the release run's group and cancel it.
 concurrency:
   group: checks-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
