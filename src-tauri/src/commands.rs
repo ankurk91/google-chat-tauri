@@ -83,9 +83,11 @@ pub fn show_notification(app: AppHandle, id: u32, title: String, body: Option<St
 
 /// Keyboard shortcuts, forwarded from `chat.js`.
 ///
-/// GTK menu accelerators do not reach the app while focus is inside the
-/// WebKitGTK webview -- measured: zero menu events for Ctrl+Plus and friends --
-/// so the page has to forward them. Menu *clicks* still work normally.
+/// Not needed on Linux, where GTK delivers the menu accelerator itself and
+/// consumes the key before the page sees it -- the earlier claim to the
+/// contrary came from measuring a shortcut that was never registered, see the
+/// note in `chat.js`. It is what makes the shortcuts work on Windows, where
+/// WebView2 holds the key and the menu's accelerator never fires.
 ///
 /// The allow-list matters: this command is callable by a page we do not
 /// control, so it deliberately excludes anything destructive. "quit" and

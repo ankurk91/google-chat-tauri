@@ -148,8 +148,35 @@ Each of these was found by running the app, and each has a comment at the releva
   action for that case. Cinnamon was wrongly suspected of this once — the activations turned out to be a human clicking
   the test notifications, which is why `scripts/notification-test.py` samples the pointer and reports *inconclusive*
   rather than passing or failing when the mouse moves.
-- **GTK menu accelerators never reach the app** while focus is in the webview. All shortcuts are handled in `chat.js`;
-  menu *clicks* work normally.
+- **GTK menu accelerators do reach the app, and the belief that they do not was a misdiagnosis.** This entry used to
+  say the opposite, on the strength of one measurement: Ctrl+Plus produced no menu event with focus in the webview. It
+  produced none because the item had no accelerator to fire — `"CmdOrCtrl+Plus"` is not a name muda's parser accepts
+  (`Equal`, `Minus` and `NumpadPlus` are; bare `Plus` is not), and Tauri parses accelerator strings with
+  `.parse().ok()`, so an unparsable one is dropped in silence rather than reported. The item was built with no shortcut
+  at all, which is also why its label was blank while Zoom Out's was not.
+
+  Measured again on Mint 22.3 / Cinnamon / X11, on an idle machine, focus verified inside the webview before *and*
+  after every keystroke (`scripts/`-style xtest harness, debug build, reading the `menu: {id}` log line). Every row
+  below reproduced on a second clean run:
+
+  | key | result |
+    |---|---|
+  | Ctrl+Q | `menu: quit`, process exits — and `chat.js` does not map `q`, and `menu_action` refuses `quit` from the page, so this can only be the accelerator |
+  | Ctrl+W | `menu: close-to-tray`, window unmapped |
+  | Ctrl+= ×3 | three `menu: zoom-in`, stored zoom 1.3 — *one* step per press |
+
+  That last row is the one to keep in mind: GTK consumes an accelerator before the webview sees the key, so `chat.js`
+  never gets a keydown for anything the menu claims and the two paths do not double-fire. The `chat.js` forwarding is
+  therefore redundant on Linux rather than load-bearing — leave it, because Windows is a different story (see below) —
+  and any *new* menu accelerator takes that key away from the page. Ctrl+F stays in `chat.js` precisely because no menu
+  item claims it.
+- **Undo and Redo do not exist on Linux as predefined items.** muda documents them Unsupported there, so `.undo()` and
+  `.redo()` add nothing and the Edit menu opened with Cut. Custom items driving `document.execCommand` fill the gap
+  (verified: typed into the sign-in field, Edit → Undo cleared it). They deliberately carry no accelerator, per the
+  point above — claiming Ctrl+Z would take the webview's own working undo away and route it through `execCommand`,
+  which cannot reach an editable inside a cross-origin frame.
+- **muda's Fullscreen item is macOS-only, and Windows draws it anyway.** Documented Unsupported on Windows and Linux:
+  Linux renders nothing, Windows renders an item that does nothing when clicked. It is now asked for on macOS only.
 - **`Window::set_badge_count` works on Ubuntu and nowhere else in this family.** It goes through tao, which `dlopen`s
   `libunity` and then returns early unless `unity_inspector_get_unity_running()` is true — that is, unless something
   owns
@@ -203,6 +230,13 @@ Each of these was found by running the app, and each has a comment at the releva
   behaviour meanwhile, because hiding a *visible* window makes Chat's page inert (see above) and flashes the user.
   `request_user_attention` is no answer either — tao maps it to `gtk_window_set_urgency_hint`, and Wayland has no
   urgency. The honest fix is xdg-activation support in tao; until then this is a documented limitation.
+- **The harnesses drive the real display, so using the machine during a run corrupts it.** They synthesise clicks and
+  keys through XTEST against whatever currently holds focus. If the developer types while one runs, the keystrokes land
+  in their window instead and the probe reports a *null* result — no menu events, a shortcut that "does nothing" — which
+  reads exactly like a bug in the app. This cost an hour: it produced a confidently wrong conclusion about menu
+  accelerators, and made `smoke-test.py`'s *focused after restore* look like a standing failure when it passes every
+  time on an idle machine. Two defences, both cheap: check `dpy.get_input_focus()` is inside the app window before and
+  after each synthetic event and abort loudly if it is not, and ask for the machine to be left alone for the run.
 - **The harnesses only see X11.** python-xlib can observe X11 clients and nothing else, and on a Wayland session GTK
   picks the Wayland backend, so the app has no X11 window and every lookup fails *exactly as if the app never started* —
   a 40-second timeout and `app window never appeared`. `smoke-test.py` and `reset-test.py` therefore pin the app with
@@ -417,9 +451,24 @@ distribution one, so read "Wayland" wherever it says Ubuntu.
 
 What is left, in the order it matters:
 
-1. **macOS and Windows are unverified.** A manual `release` run produces the dmg, the .app and the NSIS installer, and
-   nobody has ever installed or launched one. Specifically unknown: the dock badge (macOS), the taskbar overlay icon
-   (Windows), whether notifications arrive at all, and tray left-click toggle (Windows only).
+1. **macOS is unverified; Windows has now been run.** A manual `release` run produces the dmg, the .app and the NSIS
+   installer; nobody has ever launched the macOS ones, so the dock badge and whether notifications arrive there are
+   still unknown.
+
+   Windows 11 has been launched and reported on (by the maintainer, on hardware this repo's harnesses cannot reach —
+   none of the following is machine-verified here):
+
+   | behaviour | result |
+     |---|---|
+   | tray left-click toggles the window | **works** — the one thing this list used to call unknown |
+   | Edit menu's Undo/Redo | present, as muda's predefined items |
+   | View → Toggle Full Screen | appeared and did nothing — muda draws it on Windows but does not implement it. Now macOS-only |
+   | taskbar unread counter | not seen. Windows has no numeric badge for an unpackaged app; `badge::apply` sets a taskbar *overlay icon* instead, and whether it renders depends on **Settings → Personalization → Taskbar → Show badges**. Cross-check against the window title, which carries the same count |
+   | Ctrl+Q, Ctrl+W | do nothing. WebView2 keeps the key, so the menu accelerator never fires — and `chat.js`'s forwarding cannot cover Ctrl+Q, because `menu_action` refuses `quit` from the page by design. Ctrl+R works, which is WebView2's own reload rather than the menu's |
+   | Ctrl+F, zoom keys | untested — worth knowing, because they go through the same forwarding as Ctrl+W and would say whether the page receives *any* of these keys or whether Ctrl+W alone is reserved |
+
+   wry can turn WebView2's accelerator handling off (`with_browser_accelerator_keys`), which would hand these keys to
+   the page — but Tauri 2.11 does not plumb it through, so it is not reachable from here today.
 2. **A notification click does not open the conversation, and cannot be made to.** It raises the window and stops there.
    This was open pending a look at a real payload; that has now happened, and the answer is that Chat has no
    per-conversation URL to navigate to and hangs no click handler — see the two quirks above. Anything better needs

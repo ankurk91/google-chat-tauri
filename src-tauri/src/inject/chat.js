@@ -216,13 +216,22 @@
   );
 
   /* --------------------------------------------------- keyboard shortcuts */
-  /* Every shortcut lives here rather than as a menu accelerator, because GTK
-   * menu accelerators are not delivered while focus is inside the WebKitGTK
-   * webview -- measured: Ctrl+Plus produced no menu event at all. Menu *clicks*
-   * still work; this is only about the keyboard.
+  /* This used to say that GTK menu accelerators never arrive while focus is in
+   * the webview. They do -- the measurement behind that claim used Ctrl+Plus,
+   * which had no accelerator registered at all because "Plus" is not a key name
+   * muda parses and Tauri drops what it cannot parse. Re-measured: Ctrl+Q, and
+   * Ctrl+W and Ctrl+= reach the menu with focus in the page.
    *
-   * Ctrl+F is handled locally (it just focuses an input). The rest are
-   * forwarded to Rust, which owns zoom persistence and navigation. */
+   * GTK consumes the accelerator first, so on Linux nothing below fires for a
+   * key the menu claims -- one press is still one action, not two. It stays
+   * because Windows does not behave this way: WebView2 keeps the key and the
+   * menu's own accelerator never runs, which is what this forwarding is for
+   * there.
+   *
+   * Ctrl+F is handled locally (it just focuses an input) and is the one
+   * shortcut deliberately not on a menu item, so the page keeps receiving it.
+   * The rest are forwarded to Rust, which owns zoom persistence and
+   * navigation. */
 
   const isVisible = (element) =>
     !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
