@@ -1,6 +1,6 @@
 {
   "name": "google-chat-tauri",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "private": true,
   "description": "Unofficial desktop app for Google Chat.",
   "homepage": "https://github.com/ankurk91/google-chat-tauri",
