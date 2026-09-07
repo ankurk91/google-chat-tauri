@@ -17,5 +17,8 @@ because the parts around it are.
 **Do not build the AppImage locally** — it takes over fifteen minutes. Run the
 `release` workflow by hand and take the artifact.
 
-`docs/Development.md` is the reference: architecture, the platform quirks that cost real time to find, CI, and where
-things stand.
+Two references, split by what they are for. `docs/Development.md` is the guide: prerequisites, everyday commands,
+architecture, logging, releasing, and where things stand — read it to get the project running.
+`docs/Notes.md` holds the findings: platform quirks, APIs that are silently no-ops, workarounds and the measurements
+behind them. Read the relevant entry before changing behaviour it describes, and add to it when something costs you an
+afternoon.

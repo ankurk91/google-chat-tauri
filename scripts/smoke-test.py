@@ -11,7 +11,7 @@ real X11 events. Always kills the app it starts, including on failure.
 **This observes X11, so it launches the app under X11** -- see `app_env`. On a
 Wayland session that means XWayland, and the X11 path is then the only one under
 test; the native Wayland path has to be checked by hand. See "The harnesses only
-see X11" in docs/Development.md.
+see X11" in docs/Notes.md.
 
 Everything happens in a sandbox profile, for the same reason `reset-test.py`
 uses one: the app's own preferences decide whether a window appears at all, and

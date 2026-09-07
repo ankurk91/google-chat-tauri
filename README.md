@@ -160,8 +160,8 @@ See [docs/Development.md](docs/Development.md) for how to build and run it.
 
 Vibe-coded with [Claude](https://claude.com/claude-code), which wrote the Rust, the JavaScript and these docs. A human
 reviewed every line before it landed and tested the result on real hardware — which is where the platform quirks
-recorded in [docs/Development.md](docs/Development.md) came from, since none of them are the sort of thing a model finds
-by reading documentation.
+recorded in [docs/Notes.md](docs/Notes.md) came from, since none of them are the sort of thing a model finds by reading
+documentation.
 
 ## Licence
 

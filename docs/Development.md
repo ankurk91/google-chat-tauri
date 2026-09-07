@@ -3,6 +3,10 @@
 Built with [Tauri v2](https://v2.tauri.app): a Rust backend and the operating system's own web engine — WebKitGTK on
 Linux, WKWebView on macOS, WebView2 on Windows.
 
+This page gets you building and running, and explains how the pieces fit. It deliberately does not carry the platform
+findings — the no-op APIs, the workarounds and what was measured to justify them. Those live in
+[Notes.md](Notes.md), and are worth reading before you change behaviour one of them describes.
+
 ## Prerequisites
 
 - **Node 24+** and **pnpm 12**
@@ -47,7 +51,8 @@ node scripts/chatjs-test.js            # chat.js against a stand-in page: no bro
 
 The three harnesses need the single-instance slot to themselves — stop `pnpm run dev` first, or the running app answers
 instead of theirs. They observe X11 and so run the app under X11 whatever the session is; see "The harnesses only see
-X11" below for what that does and does not prove.
+X11" in [Notes.md](Notes.md) for what that does and does not prove, and leave the machine alone while one runs — the
+entry above it says what happens if you do not.
 
 The app closes to the tray, so the window's ✕ will not stop it. Kill it properly, or `dev` will refuse to start a second
 copy:
@@ -64,6 +69,7 @@ because the bundler wants `frontendDist` to name a directory; it is never shown.
 
 ```
 frontend/index.html            placeholder, never rendered
+docs/Notes.md                  platform findings and workarounds, with the measurements behind them
 docs/Troubleshooting.md        for people using the app, not building it
 scripts/                       developer tooling; nothing here ships
 src-tauri/
@@ -110,210 +116,9 @@ capability with a matching
 Treat that list as attack surface — it is callable by a page nobody here controls. Commands validate their own input,
 and anything destructive stays out of it: `menu_action` has an allow-list that excludes quit and sign-out.
 
-## Things that are not obvious
-
-Each of these was found by running the app, and each has a comment at the relevant code:
-
-- **`on_navigation` cannot hold a host allow-list.** wry's WebKitGTK backend fires it for *every frame*, so an
-  allow-list there rejects legitimate third-party iframes. Link policy lives in `chat.js`, which is main-frame-only.
-- **Sign-in hops through a country domain** (`accounts.google.co.in/SetSID` and its equivalents). Treat one as external
-  and the browser finishes the login instead of the app. See `urls::is_accounts_host`.
-- **`window.Notification` is unusable in all three webviews.** WebKitGTK denies permission (`requestPermission()` →
-  `"denied"`), WKWebView has no such API, and WebView2 drops notifications silently. `chat.js` replaces it entirely.
-  Linux talks to `notify-rust` directly, because the notification plugin's click API is mobile-only.
-- **Chat's notifications carry no click handler.** Real ones arrive through
-  `ServiceWorkerRegistration.showNotification` (logged as `source=sw`) and have neither an `onclick` nor a listener, so
-  dispatching a click on them does nothing: the real handler is the service worker's own `notificationclick`, which the
-  page cannot reach. Clicking therefore raises the window but does not open the conversation. `chat.js` logs what each
-  notification carries at
-  `debug`, and falls back to any Chat link in the payload.
-- **There is no per-conversation URL to fall back to.** The link fallback above has nothing to find, and this is a
-  property of Chat rather than a gap in the payload. Measured on Ubuntu 26.04 with a debug build and real messages: the
-  payload carries a `tag` shaped `<per-message id>/<sender user id>`, whose second field is stable per sender and whose
-  first field changes with every message —
-
-  ```
-  tag=Xvr7Ku2rBq8/100361636183453074426
-  tag=_aaFZj4pHik/100361636183453074426     same person, three messages
-  tag=aS8iqASaHUg/100361636183453074426
-  ```
-
-  so it names the *sender*, not the conversation. And the document URL never moves off `chat.google.com/u/0/app/home`
-  while you walk between conversations — confirmed both in the app's inspector and in a stock browser, so it is not a
-  webview artefact. `location.assign` therefore has nothing to assign, which also explains why **Copy Current URL** can
-  only ever return the app root. Opening the right conversation would mean driving Chat's own in-page router, and the
-  service worker holds the only handle on it.
-- **A notification "activation" is indistinguishable from a real click.** If a desktop's notification service invoked
-  `default` on expiry it would raise the window after every message; `GOOGLE_CHAT_NOTIFICATION_ACTIONS=0` disables the
-  action for that case. Cinnamon was wrongly suspected of this once — the activations turned out to be a human clicking
-  the test notifications, which is why `scripts/notification-test.py` samples the pointer and reports *inconclusive*
-  rather than passing or failing when the mouse moves.
-- **GTK menu accelerators do reach the app, and the belief that they do not was a misdiagnosis.** This entry used to
-  say the opposite, on the strength of one measurement: Ctrl+Plus produced no menu event with focus in the webview. It
-  produced none because the item had no accelerator to fire — `"CmdOrCtrl+Plus"` is not a name muda's parser accepts
-  (`Equal`, `Minus` and `NumpadPlus` are; bare `Plus` is not), and Tauri parses accelerator strings with
-  `.parse().ok()`, so an unparsable one is dropped in silence rather than reported. The item was built with no shortcut
-  at all, which is also why its label was blank while Zoom Out's was not.
-
-  Measured again on Mint 22.3 / Cinnamon / X11, on an idle machine, focus verified inside the webview before *and*
-  after every keystroke (`scripts/`-style xtest harness, debug build, reading the `menu: {id}` log line). Every row
-  below reproduced on a second clean run:
-
-  | key | result |
-    |---|---|
-  | Ctrl+Q | `menu: quit`, process exits — and `chat.js` does not map `q`, and `menu_action` refuses `quit` from the page, so this can only be the accelerator |
-  | Ctrl+W | `menu: close-to-tray`, window unmapped |
-  | Ctrl+= ×3 | three `menu: zoom-in`, stored zoom 1.3 — *one* step per press |
-
-  That last row is the one to keep in mind: GTK consumes an accelerator before the webview sees the key, so `chat.js`
-  never gets a keydown for anything the menu claims and the two paths do not double-fire. The `chat.js` forwarding is
-  therefore redundant on Linux rather than load-bearing — leave it, because Windows is a different story (see below) —
-  and any *new* menu accelerator takes that key away from the page. Ctrl+F stays in `chat.js` precisely because no menu
-  item claims it.
-- **Undo and Redo do not exist on Linux as predefined items.** muda documents them Unsupported there, so `.undo()` and
-  `.redo()` add nothing and the Edit menu opened with Cut. Custom items driving `document.execCommand` fill the gap
-  (verified: typed into the sign-in field, Edit → Undo cleared it). They deliberately carry no accelerator, per the
-  point above — claiming Ctrl+Z would take the webview's own working undo away and route it through `execCommand`,
-  which cannot reach an editable inside a cross-origin frame.
-- **muda's Fullscreen item is macOS-only, and Windows draws it anyway.** Documented Unsupported on Windows and Linux:
-  Linux renders nothing, Windows renders an item that does nothing when clicked. It is now asked for on macOS only.
-- **`Window::set_badge_count` works on Ubuntu and nowhere else in this family.** It goes through tao, which `dlopen`s
-  `libunity` and then returns early unless `unity_inspector_get_unity_running()` is true — that is, unless something
-  owns
-  `com.canonical.Unity` on the session bus. Ubuntu Dock owns it and `libunity9` ships as a dependency of `nautilus`, so
-  a stock Ubuntu has both halves; Cinnamon, XFCE, MATE and plain GNOME have neither and the call is silently inert.
-  Verified on 26.04 by watching the bus while the count changed:
-
-  ```
-  member=Update  string "application://Google Chat.desktop"
-    "count" → int64 1    "count-visible" → boolean true
-  ```
-
-  The desktop id is derived by Tauri from `productName`, so it matches the entry the deb installs only as long as the
-  two agree — rename one without the other and the badge quietly stops. The window title carries the count everywhere.
-- **The Linux tray delivers no click events at all.** `tray-icon`'s GTK backend emits none, so the tray menu is the only
-  way in. Windows toggles on click.
-- **Resetting app data has to happen in the *next* process.** WebKit's storage cannot be deleted from under a live
-  webview: `clear_all_browsing_data` is asynchronous, and the network process writes the cookie jar out again as it
-  shuts down, so a reset-then-restart leaves the user signed in. `features::
-  reset` drops a sentinel and does the deleting at the top of the next launch, before any plugin or webview has opened
-  those files.
-- **`AppHandle::restart` is the wrong restart when a plugin owns a lock.** It spawns the replacement *before* plugin
-  shutdown, so the new process finds the single-instance name still held, hands its argv to the process on its way out
-  and exits -- leaving nothing running. It also never returns, which deadlocks a caller on a plugin thread.
-  `request_restart` exits through `RunEvent::Exit`
-  instead, and needs the same `quitting` flag as Quit or close-to-tray vetoes the window close.
-- **A minimised window cannot be deiconified on Cinnamon.** `unminimize()`
-  reaches `gtk_window_deiconify`, and the window stays iconic however often it is asked — measured, `WM_STATE` never
-  leaves 3. Hiding it and showing it again re-maps it in the normal state. And tao refuses to focus a window it still
-  believes is minimised, learning otherwise only when the window manager confirms the deiconify, which is after the call
-  returns — so the focus has to be asked for again once that lands. Both are handled in
-  `window::show_and_focus`.
-- **On Wayland the app cannot raise itself, and this is not worked around.** An application on Wayland cannot *take*
-  focus, only *receive* it: the compositor hands out an xdg-activation token in response to a user input event, and an
-  activation without one is declined. `set_focus` is tao's `present_with_time(GDK_CURRENT_TIME)`, which carries no
-  token, and neither tao nor Tauri expose the protocol. Measured on Ubuntu 26.04 / GNOME 50.1 / Wayland, from the tray's
-  Toggle:
-
-  | window state | result |
-    |---|---|
-  | minimised | raises and focuses — `show_and_focus` hides it first, so it comes back as a fresh map |
-  | visible, unfocused | GNOME posts a *"Google Chat is ready"* notification; the user has to click that instead |
-
-  Notification clicks are unaffected, because gnome-shell activates the app itself and passes a real token — which is
-  the path that matters most here.
-
-  It is tempting to widen the hide-then-show above to cover the unfocused case, since it demonstrably gets focus today.
-  Do not: it works only because compositors still treat a newly mapped window leniently, and that is precisely what they
-  are tightening — KWin is switching focus-stealing prevention on at a low level and making it "gradually stricter as
-  applications are being fixed". A trick that depends on the leniency being closed is not a fix, and it would cost real
-  behaviour meanwhile, because hiding a *visible* window makes Chat's page inert (see above) and flashes the user.
-  `request_user_attention` is no answer either — tao maps it to `gtk_window_set_urgency_hint`, and Wayland has no
-  urgency. The honest fix is xdg-activation support in tao; until then this is a documented limitation.
-- **The harnesses drive the real display, so using the machine during a run corrupts it.** They synthesise clicks and
-  keys through XTEST against whatever currently holds focus. If the developer types while one runs, the keystrokes land
-  in their window instead and the probe reports a *null* result — no menu events, a shortcut that "does nothing" — which
-  reads exactly like a bug in the app. This cost an hour: it produced a confidently wrong conclusion about menu
-  accelerators, and made `smoke-test.py`'s *focused after restore* look like a standing failure when it passes every
-  time on an idle machine. Two defences, both cheap: check `dpy.get_input_focus()` is inside the app window before and
-  after each synthetic event and abort loudly if it is not, and ask for the machine to be left alone for the run.
-- **The harnesses only see X11.** python-xlib can observe X11 clients and nothing else, and on a Wayland session GTK
-  picks the Wayland backend, so the app has no X11 window and every lookup fails *exactly as if the app never started* —
-  a 40-second timeout and `app window never appeared`. `smoke-test.py` and `reset-test.py` therefore pin the app with
-  `GDK_BACKEND=x11`, which on a Wayland session means XWayland; they consequently test the X11 path only, and the native
-  Wayland path has to be checked by hand. `smoke-test.py` also runs in a sandbox profile, because it is otherwise at the
-  mercy of the developer's own `start_hidden` — with that set there is no window to find and the failure looks identical
-  to the one above, which cost an hour once.
-- **An ACL rejection makes a page's links dead, and that is how someone gets stranded.** The capability names
-  `mail.google.com` and `chat.google.com`, so every `invoke` from any other origin is turned down. `chat.js` intercepts
-  cross-origin and `target=_blank` clicks *everywhere*, because an initialization script has no way to run on some
-  documents and not others — so on an origin the ACL does not cover it was calling `preventDefault()` and then
-  swallowing the rejection, leaving the page with links that do nothing. The worst case is the one that was reported:
-  signed out on a Google marketing page, where the "Sign in" link is the only way back. `handOff` now navigates the
-  window itself when Rust will not answer. Nothing is given up by it — the allow-list exists to keep links *shared
-  inside Chat* out of this window, and off the Chat origins there are none.
-- **A sign-out can land on an advertisement.** `accounts/Logout?continue=<APP_URL>` follows the continue parameter, and
-  Google then decides — not consistently, which is why this is hard to reproduce — whether a session-less visit to Chat
-  gets the sign-in form or `workspace.google.com/intl/en-US/gmail/`. The advertisement is a dead end: **History → Go to
-  Chat** only bounces off the same redirect, so the only way out used to be **Reset App Data**. `features::sign_in`
-  watches what commits and sends the window at `accounts.google.com/ServiceLogin` instead, at most twice in a row —
-  a redirect loop would be worse than the dead end, and the dead end is now clickable anyway. Verified against the real
-  page by pointing `APP_URL` at `workspace.google.com/intl/en-US/gmail/` for one run: the app launched onto the
-  advertisement and arrived at Google's sign-in form. Pointing `sign_in_url` back at the advertisement as well produced
-  two redirects and then the warning, which is the loop guard doing its job.
-- **A menu item can be found again, but not through `Menu::get`.** That only searches the top level, so every check
-  item under Preferences is invisible to it — which is why the toggles keep their own state rather than reading a tick
-  back. The link grant is the one setting that changes without a click, so it needs to clear its own tick;
-  `app_menu::nested_check_item` walks the submenus by hand to reach it. Rebuilding the whole menu with `set_menu` works
-  too and gets every tick right, but GTK answers it with one *"no accelerator installed in accel group"* warning per
-  accelerator, every time.
-- **`navigate` from inside `on_page_load` re-enters the webview.** `send_user_message` dispatches inline when it is
-  already on the main thread, and `on_page_load` *is* the main thread, inside WebKit's own `load-changed` handler — so
-  a redirect there asks WebKit to start a second load from within the first one's callback. `run_on_main_thread` is no
-  escape; it goes through the same function. `features::sign_in` sends the navigation from a spawned thread, which
-  routes it through the event loop and runs it once the load has settled.
-- **WebKitGTK's failed-load page has no styling whatsoever.** It is built as
-  `<html><body>%s</body></html>` and that is the whole template — confirmed by reading it out of the shipped
-  `libwebkit2gtk-4.1`. Unstyled text is black, the window's `background_color` is Google's dark grey, and the result is
-  the one line explaining the failure rendered black on black. Electron would answer this with `did-fail-load` and a
-  local error page; wry exposes no equivalent hook, so there is nothing for Rust to hang a replacement on. `chat.js`
-  rewrites the document instead. The fingerprint it matches (empty head, a body with text and no elements) is narrow on
-  purpose: WKWebView leaves the document empty and WebView2 draws its own styled page, so neither is touched.
-- **That page is a near-dead end, and both obvious ways out of it are closed.** All measured by pointing `APP_URL` at a
-  local port with nothing on it, then starting a server there once the load had already failed:
-
-  | from inside the error document | result |
-    |---|---|
-  | `<a href>` at the URL that failed | click lands, handler runs, page never moves |
-  | `location.href = location.href` | nothing |
-  | `location.reload()` | nothing |
-  | `location.href = <any other URL>` | navigates immediately |
-  | `invoke(...)` | rejected: *"Origin header is not a valid URL"* |
-
-  So WebKit will not let the stand-in document navigate to the URL it is standing in for. And the bridge is no help
-  either: Tauri's IPC **is** injected there (`__TAURI_INTERNALS__` and `__TAURI__.core` both present), but the document
-  has an opaque origin — `location.origin` is the string `"null"` — and Tauri rejects that before it ever looks at a
-  capability, so no `remote.urls` entry can open it.
-
-  Two things follow. The **Try again** button aims at Chat's canonical trailing-slash URL rather than at whatever
-  failed, because Google treats `/chat/u/0` and `/chat/u/0/` as the same page (measured: the first answers 302 to the
-  second) and a differently spelled URL is the one thing that does move. And the same opaque origin is why
-  `isCrossOrigin` calls *every* link on that page external — which is what silently swallowed the first version of the
-  button when it was an ordinary anchor. A `<button>` with a handler sidesteps the interceptor as well.
-- **A hidden window is not just invisible, it is inert.** Chat's router does nothing while the page is hidden, so a
-  notification click has to raise the window *first* and let it paint before the page is told about the click -- hence
-  the ordering and the pause in `notifications::activated`.
-- **Chat does not render its navigation while the window is hidden.** The DOM the unread count scrapes simply is not
-  there, so the count reads zero -- exactly when the tray is the only thing the user can see. The favicon is used for
-  the has-unread flag because it is driven by data rather than layout; Google publishes `..._no_dot_` and `..._dot_`
-  variants and swaps between them.
-
 ## Logs
 
-`tauri-plugin-log` starts with a stdout target *and* a log-directory target, so pass both to `targets()` at once; adding
-them with `target()` leaves the defaults in place and writes every line twice.
-
-It writes to the platform log directory (`~/.local/share/com.ankurk91.google-chat-tauri/logs/` on Linux), reachable from
+Logs go to the platform log directory (`~/.local/share/com.ankurk91.google-chat-tauri/logs/` on Linux), reachable from
 **Help → Show Logs**. Debug builds log at `debug`, release at `info`; `tao` and
 `wry` are capped at `warn` because they are chatty.
 
@@ -351,11 +156,8 @@ the config file — so nobody gets the same dialog twice a day until they update
 that and always answers, because a manual check that appears to do nothing is indistinguishable from a broken one.
 **Preferences → Check for Updates Automatically** turns the scheduled half off; the thread stays, and skips the request.
 
-It asks `/releases`, **not** `/releases/latest`. GitHub documents the latter as "the most recent non-prerelease,
-non-draft release", so a repository whose only release is a pre-release has no latest at all and answers 404 — which is
-indistinguishable from having never released anything. Measured on 2026-09-06 with v0.0.1 published as a pre-release:
-`/releases/latest` 404, `/releases` one entry. Drafts are skipped; the highest version wins, not the first listed, since
-GitHub orders by creation date and a patch to an older line can be published after a newer release.
+It asks `/releases` rather than `/releases/latest`, skips drafts and takes the highest version rather than the first
+listed — all three for reasons in [Notes.md](Notes.md).
 
 Pre-releases count as updates while the running version is itself pre-1.0 or carries a pre-release tag. The whole of
 `0.x` is this app's pre-release era, and someone on 0.0.1 who is never told about 0.0.2 is not being served; once it
@@ -363,8 +165,8 @@ reaches 1.0.0, a stable user stops being offered betas. A `404` still means "not
 a typo in the URL.
 
 The HTTP client is `ureq` with **native-tls**, so TLS comes from the platform — OpenSSL on Linux, which WebKitGTK
-already pulls in, Schannel on Windows, Security.framework on macOS. Naming the provider in the request config is not
-optional: ureq defaults to Rustls and *panics* mid-request if the default is not the feature that was compiled in.
+already pulls in, Schannel on Windows, Security.framework on macOS. The provider has to be named in the request config;
+[Notes.md](Notes.md) says what happens if it is not.
 
 `features::connectivity` is the other half. The window points at a remote page, so with no route to the internet the
 webview shows a bare error page that says nothing about the app. One TCP connection to `chat.google.com:443` — no TLS,
@@ -373,7 +175,8 @@ retries across about a minute (2, 4, 8, 15, 30 seconds; 84 seconds end to end, s
 its connect timeout) and then tells the user once, through the desktop's own notification.
 
 After that it keeps looking, every thirty seconds, until the network answers — and then loads Chat. That poller only
-exists because the error page in the window cannot retry itself (see the quirk above), so without it, joining wifi
+exists because the error page in the window cannot retry itself (see "That page is a near-dead end" in
+[Notes.md](Notes.md)), so without it, joining wifi
 after launching offline leaves the app stuck on that page for as long as it stays open. It only ever starts when the
 app launched with no network at all, and it stops on the first success, so the cost is one TCP connect twice a minute
 for exactly as long as there is nothing to connect to.
@@ -443,7 +246,7 @@ Verified on two desktops, which between them cover both display servers:
 | notifications + click-through             | yes                                              | yes                                  |
 | dock badge (`set_badge_count`)            | **yes** — Ubuntu Dock owns `com.canonical.Unity` | no — nothing owns the name           |
 | numbered tray icon + title count          | yes                                              | yes                                  |
-| raise from tray Toggle                    | **only from minimised** — see the Wayland quirk  | yes                                  |
+| raise from tray Toggle                    | **only from minimised** — see [Notes](Notes.md)  | yes                                  |
 | Reset App Data, geometry, single instance | yes                                              | yes                                  |
 
 Ubuntu is the primary target; Mint is the secondary one. The split above is a display-server difference rather than a
@@ -471,11 +274,12 @@ What is left, in the order it matters:
    the page — but Tauri 2.11 does not plumb it through, so it is not reachable from here today.
 2. **A notification click does not open the conversation, and cannot be made to.** It raises the window and stops there.
    This was open pending a look at a real payload; that has now happened, and the answer is that Chat has no
-   per-conversation URL to navigate to and hangs no click handler — see the two quirks above. Anything better needs
+   per-conversation URL to navigate to and hangs no click handler — see the two notification entries in
+   [Notes.md](Notes.md). Anything better needs
    Chat's own router, so treat this as closed rather than pending unless the service worker becomes reachable.
 3. **The window cannot raise itself on Wayland** when it is visible but unfocused, so tray → Toggle produces GNOME's
    "window is ready" notification instead. Waiting on xdg-activation support in tao; deliberately not worked around, for
-   the reasons in the quirk above.
+   the reasons in [Notes.md](Notes.md).
 4. **Attachment links open in the system browser.** Deliberate for now — it works. `on_download` would keep them in-app:
    one line in `urls::is_in_app`.
 

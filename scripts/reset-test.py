@@ -15,7 +15,7 @@ is already going, because single-instance is keyed on the session bus and the
 running app would answer instead of ours.
 
 Like `smoke-test.py`, this watches X11 and so pins the app to X11 -- XWayland on
-a Wayland session. See "The harnesses only see X11" in docs/Development.md.
+a Wayland session. See "The harnesses only see X11" in docs/Notes.md.
 """
 
 import os
