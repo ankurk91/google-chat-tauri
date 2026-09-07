@@ -18,6 +18,22 @@ use crate::config::{self, Config, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
 use crate::features::window::MAIN;
 use crate::state::AppState;
 
+/// What the About dialog shows. Shared with the tray menu, which offers the
+/// same item -- on macOS and Windows the window menu bar is not always in front
+/// of the user, and on Linux there are setups where the tray is all there is.
+pub fn about_metadata() -> AboutMetadata<'static> {
+    AboutMetadata {
+        name: Some("Google Chat".into()),
+        icon: crate::icons::decode(crate::icons::APP).ok(),
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        authors: Some(vec!["ankurk91".into()]),
+        comments: Some("Unofficial desktop app for Google Chat.".into()),
+        license: Some("GPL-3.0-only".into()),
+        website: Some(env!("CARGO_PKG_REPOSITORY").into()),
+        ..Default::default()
+    }
+}
+
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let file = SubmenuBuilder::new(app, "File")
         .item(
@@ -147,16 +163,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .separator()
         .item(&MenuItemBuilder::with_id("reset-app", "Reset App Data...").build(app)?)
         .separator()
-        .about(Some(AboutMetadata {
-            name: Some("Google Chat".into()),
-            icon: crate::icons::decode(crate::icons::APP).ok(),
-            version: Some(env!("CARGO_PKG_VERSION").into()),
-            authors: Some(vec!["ankurk91".into()]),
-            comments: Some("Unofficial desktop app for Google Chat.".into()),
-            license: Some("GPL-3.0-only".into()),
-            website: Some(env!("CARGO_PKG_REPOSITORY").into()),
-            ..Default::default()
-        }))
+        .about(Some(about_metadata()))
         .build()?;
 
     Menu::with_items(app, &[&file, &edit, &view, &history, &preferences, &help])

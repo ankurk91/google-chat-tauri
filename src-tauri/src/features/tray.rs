@@ -35,7 +35,15 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     }
 
     let separator = PredefinedMenuItem::separator(app)?;
+    // Same dialog the window menu's Help -> About opens; the tray is often the
+    // only part of the app in front of the user.
+    let about = PredefinedMenuItem::about(
+        app,
+        Some("About"),
+        Some(crate::features::app_menu::about_metadata()),
+    )?;
     items.push(&separator);
+    items.push(&about);
     items.push(&quit);
 
     let menu = Menu::with_items(app, &items)?;
