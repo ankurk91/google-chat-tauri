@@ -130,6 +130,38 @@ running, see [Development.md](Development.md).
   below) and flashes the user.
   `request_user_attention` is no answer either — tao maps it to `gtk_window_set_urgency_hint`, and Wayland has no
   urgency. The honest fix is xdg-activation support in tao; until then this is a documented limitation.
+- **The window's own close, minimise and maximise buttons belong to the app, so a busy main thread kills them.** mutter
+  offers Wayland clients no server-side titlebar, and the window is built with decorations left on, so GTK draws those
+  three buttons *inside this process* and services them on the GTK main loop. Confirmed by interrupting a healthy run
+  under gdb: thread 1 is `ppoll` -> `g_main_context_iteration` -> `gtk_main_iteration_do` -> tao's
+  `event_loop.rs:1154`. The page renders in a separate `WebKitWebProcess`, so it keeps working while the buttons are
+  dead -- which is why the symptom reads as "the buttons are broken" rather than "the app is busy".
+
+  Reported on Ubuntu 26.04 / GNOME 50.1 / Wayland: all three unresponsive for a while just after launch, fine
+  afterwards. That fits what the machine is doing at the time -- a VirtualBox guest with no 3D acceleration, so Mesa
+  falls back to `llvmpipe` (six of its threads sit in the process) and Chat's first paint competes with the main loop
+  for six vCPUs. **Not proven**, because no backtrace was captured while it was happening: if it recurs, interrupt the
+  process and read thread 1 before theorising. gdb has to *launch* the app to do that, since
+  `kernel.yama.ptrace_scope` is 1 here and attaching after the fact is refused.
+
+  One main-thread block *is* certain, and worth fixing on its own account: `show_notification` is a synchronous Tauri
+  command, and Tauri runs those on the main thread, so `notify_rust`'s blocking `show()` round-trip happens there.
+  Measured against gnome-shell 50.1 over 25 `Notify` calls: median 48 ms, p90 86 ms, **max 520 ms** -- including about
+  20 ms of `gdbus` spawn that the app does not pay. Every notification therefore stalls the titlebar for tens to
+  hundreds of milliseconds, and a burst compounds. `set_unread_count` and the tray handler are on that thread too.
+- **Chat costs about 1.8 GB of WebKitGTK, and the debug build is not why.** Measured on Ubuntu 26.04 / GNOME 50.1 /
+  Wayland, signed in, sampling RSS every 30 seconds: 690 MB parked on the sign-in page, then 1764-2070 MB with Chat
+  loaded, mean 1817 MB across twenty samples. In one 2107 MB reading the `WebKitWebProcess` holding the page was
+  1693 MB and the Rust side 237 MB -- 11% of the total. The figure oscillates by roughly 100 MB as WebKit's collector
+  runs, which is what makes any single reading misleading; over ten post-load minutes it drifted -33 MB, so this is a
+  steady state rather than a leak. The maintainer measured the **release deb from GitHub on the same machine at the
+  same 2 GB**, which rules out debug-build overhead as the explanation. This guest has no 3D acceleration, so WebKit
+  composites through `llvmpipe` in CPU memory. Treat 2 GB as what Chat costs in a software-rendered WebKitGTK, not as
+  something this app can shrink.
+- **arboard cannot use the Wayland clipboard, and it does not matter.** Every launch on GNOME Wayland opens with a
+  warning that neither `ext-data-control` nor `wlr-data-control` is supported -- mutter implements neither -- and that
+  it is falling back to the X11 protocol. **Copy Current URL** still lands in a Wayland application's paste buffer,
+  verified by pasting one. The warning is cosmetic; do not go hunting a clipboard bug on the strength of it.
 - **The harnesses drive the real display, so using the machine during a run corrupts it.** They synthesise clicks and
   keys through XTEST against whatever currently holds focus. If the developer types while one runs, the keystrokes land
   in their window instead and the probe reports a *null* result — no menu events, a shortcut that "does nothing" — which
