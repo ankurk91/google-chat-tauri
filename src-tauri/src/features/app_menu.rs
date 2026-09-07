@@ -70,9 +70,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // reassigns this.
     #[cfg_attr(not(debug_assertions), allow(unused_mut))]
     let mut view = SubmenuBuilder::new(app, "View")
+        // "Plus" is not a key name muda knows -- it parses only NumpadPlus --
+        // and tauri drops an accelerator it cannot parse instead of failing, so
+        // this item silently had none and showed no shortcut at all next to a
+        // Zoom Out that did. "Equal" is the physical key, and matches what
+        // chat.js accepts (= as well as +).
         .item(
             &MenuItemBuilder::with_id("zoom-in", "Zoom In")
-                .accelerator("CmdOrCtrl+Plus")
+                .accelerator("CmdOrCtrl+Equal")
                 .build(app)?,
         )
         .item(
