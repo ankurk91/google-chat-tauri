@@ -56,15 +56,29 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         )
         .build()?;
 
-    let edit = SubmenuBuilder::new(app, "Edit")
-        .undo()
-        .redo()
-        .separator()
-        .cut()
-        .copy()
-        .paste()
-        .select_all()
-        .build()?;
+    // muda's predefined Undo/Redo are macOS and Windows only -- on Linux they
+    // are documented Unsupported and simply do not appear, which is why the
+    // Edit menu there was missing its first two entries. Custom items with the
+    // same labels close the gap, driven through the page's own edit stack.
+    //
+    // They deliberately declare no accelerator: a menu accelerator is consumed
+    // by GTK before the webview sees the key (measured -- see the note in
+    // chat.js), so claiming Ctrl+Z here would take the working native undo away
+    // from every text field and hand it to execCommand, which cannot reach an
+    // editable inside a cross-origin frame. Clicking the item is additive; the
+    // keystroke is left alone.
+    let mut edit = SubmenuBuilder::new(app, "Edit");
+    #[cfg(not(target_os = "linux"))]
+    {
+        edit = edit.undo().redo();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        edit = edit
+            .item(&MenuItemBuilder::with_id("undo", "Undo").build(app)?)
+            .item(&MenuItemBuilder::with_id("redo", "Redo").build(app)?);
+    }
+    let edit = edit.separator().cut().copy().paste().select_all().build()?;
 
     // `mut` is only needed in debug builds, where the devtools item below
     // reassigns this.
@@ -91,9 +105,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 .build(app)?,
         )
         .separator()
-        .item(&MenuItemBuilder::with_id("copy-url", "Copy Current URL").build(app)?)
-        .separator()
-        .fullscreen();
+        .item(&MenuItemBuilder::with_id("copy-url", "Copy Current URL").build(app)?);
+
+    // muda's Fullscreen is macOS-only. Linux never rendered it, but Windows
+    // draws the item and then does nothing when it is clicked -- an entry that
+    // exists only to disappoint. Ask for it where it works.
+    #[cfg(target_os = "macos")]
+    {
+        view = view.separator().fullscreen();
+    }
 
     // Only useful in a dev build; shipping it invites confusion.
     #[cfg(debug_assertions)]
@@ -220,6 +240,14 @@ pub fn handle(app: &AppHandle, id: &str) {
             let _ = app.hide();
             #[cfg(not(target_os = "macos"))]
             let _ = window.hide();
+        }
+        // Linux only -- elsewhere Undo/Redo are predefined items the platform
+        // handles itself, and never reach this match.
+        "undo" => {
+            let _ = window.eval("document.execCommand('undo')");
+        }
+        "redo" => {
+            let _ = window.eval("document.execCommand('redo')");
         }
         "reload" => {
             if let Ok(url) = window.url() {
