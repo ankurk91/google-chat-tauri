@@ -14,11 +14,8 @@ message, launching a macOS or Windows bundle: none of these can be driven from h
 them, then say plainly what is left and what to do — do not guess at the result, and do not report something as working
 because the parts around it are.
 
-**Do not build the AppImage locally** — it takes over fifteen minutes. Run the
-`release` workflow by hand and take the artifact.
-
-Two references, split by what they are for. `docs/Development.md` is the guide: prerequisites, everyday commands,
-architecture, logging, releasing, and where things stand — read it to get the project running.
-`docs/Notes.md` holds the findings: platform quirks, APIs that are silently no-ops, workarounds and the measurements
-behind them. Read the relevant entry before changing behaviour it describes, and add to it when something costs you an
-afternoon.
+Three references, split by what they are for. `docs/Development.md` is the guide: prerequisites, everyday commands,
+architecture, logging, releasing — read it to get the project running. `docs/Workarounds.md` lists the code that looks
+wrong until you know why; read the entry before changing the code it names. `docs/Notes.md` holds the findings behind
+those: platform quirks, APIs that are silently no-ops, and the measurements. Add to Notes when something costs you an
+afternoon, and to Workarounds when the fix is not obvious from the code.
