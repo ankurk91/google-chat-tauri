@@ -63,13 +63,34 @@ powershell -ExecutionPolicy Bypass -File scripts\windows-shortcut-test.ps1
 It reads the Win32 menu back with `GetMenuStringW` and injects real Ctrl+W and Ctrl+Q — the only way to tell a shortcut
 that is missing from one that is present, correct and silently never dispatched.
 
-CI runs the first two. The rest drive the real desktop, and two rules follow:
+CI runs the first two, alongside the checks below. The rest drive the real desktop, and two rules follow:
 
 - **Stop `pnpm run dev` first.** Each harness needs the single-instance slot, or the running app answers instead.
 - **Leave the machine alone while one runs.** They synthesise input against whatever holds focus; each aborts rather
   than reporting a false failure, but your keystrokes will end the run.
 
 The Python harnesses observe X11 only — see [Notes.md](Notes.md) for what that does and does not prove.
+
+### What CI checks
+
+`ci.yml` runs on a push to `main` touching `src-tauri/`, `scripts/` or `package.json` — and `release.yml` calls it as
+the `checks` job that its `build` needs, so these five decide whether a release happens at all. They are the whole gate;
+run them before pushing a tag:
+
+```bash
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+node --check src-tauri/src/inject/chat.js
+node scripts/chatjs-test.js
+```
+
+**A green `cargo test` is not a green CI.** `--check` fails on a line `cargo build` is perfectly happy with, and
+`-D warnings` turns every clippy lint into an error. Formatting is the easiest of the five to break without noticing:
+edit a call so its arguments would now fit on one line and rustfmt wants them there, though nothing you ran locally
+says so.
+
+The Python harnesses are deliberately absent — they drive a real desktop, which a runner does not have.
 
 ## How it is put together
 
@@ -220,5 +241,14 @@ pnpm run tauri icon src-tauri/icons/source-1024.png
 ## Releasing
 
 Bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, then push a `v*` tag. The
+version is in `src-tauri/Cargo.lock` too — cargo rewrites it on the next build, so it belongs in the same commit. The
 release matrix builds all five bundles. Builds are unsigned, so macOS and Windows block the first launch; the way past
 each is in the release notes `release.yml` writes, and in [Troubleshooting.md](Troubleshooting.md).
+
+Two things about the tag are worth knowing before you push one:
+
+- **The build gates on the checks.** `release.yml` runs `ci.yml` first and bundles nothing if it fails, so a tag on a
+  commit that fails so much as `cargo fmt --check` produces no artifacts. Fixing `main` afterwards does not help — the
+  build runs at the tagged commit, so the tag has to move. Run [the five checks](#what-ci-checks) *before* tagging.
+- **The release arrives as a draft.** `releaseDraft: true`, so a human publishes it. Until someone does, the in-app
+  update check cannot see the release: it reads the releases API, and a draft is not there.
