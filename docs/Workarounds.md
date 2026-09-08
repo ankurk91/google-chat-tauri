@@ -14,13 +14,35 @@ The measurements and platform behaviour behind these are in [Notes.md](Notes.md)
 fires it for every frame, so an allow-list there rejects legitimate third-party iframes. The injected script runs in the
 main frame only, which is exactly the granularity the policy needs.
 
+### `chat.js` installs three different amounts of itself
+
+An initialization script is attached to the webview, not to a page: Tauri runs it at document-start on every top-level
+navigation, and this window goes well beyond Chat — a country sign-in domain, an employer's identity provider while the
+link grant is open, a marketing page after a sign out, the webview's own failed-load document. So the boot block at the
+end of the file branches on `location.origin`, which is the same thing Tauri's ACL keys on:
+
+| where | what runs |
+|---|---|
+| `mail.google.com`, `chat.google.com` | all of it |
+| no origin at all (`"null"`) | the failed-load page rewrite, and nothing else |
+| anywhere else | link hand-off, and nothing else |
+
+Off Chat the bridge refuses every call, so the shortcuts would be swallowed and then refused, the notification shim
+would promise a permission it cannot honour, and the poller would scrape a page with no unread count in it. None of that
+is a security boundary — the ACL is, and it holds regardless — it is about not rearranging pages the app does not own.
+Third-party sign-in is the case that made it matter: an identity provider's own click handler is where the sign-in
+happens, and the interceptor used to call `stopPropagation()` on it.
+
 ### `handOff` navigates the window itself when `invoke` is refused
 
-The interceptor runs on every document, because an initialization script has no way to run on some and not others. On an
-origin the capability does not name, it would otherwise call `preventDefault()` and then swallow the ACL rejection,
-leaving a page whose links do nothing — worst case, signed out on a Google marketing page where "Sign in" is the only
-way back. Navigating the window directly gives nothing up: the allow-list exists to keep links shared *inside Chat* out
-of this window, and off the Chat origins there are none.
+Link hand-off is the one thing that still runs off Chat, and only for a link that asks for a second window — `_blank`,
+or `window.open`. wry has no handler to give it one, so without this nothing happens at all and the link looks dead;
+worst case, signed out on a Google marketing page where "Sign in" is the only way back. The ACL refuses the hand-off on
+those origins, so `handOff` falls back to navigating this window. Nothing is given up by it: the allow-list exists to
+keep links shared *inside Chat* out of this window, and off the Chat origins there are none.
+
+An ordinary cross-origin link is *not* taken off those pages. The page can follow it perfectly well by itself, and
+taking it costs the page its own click handler for nothing.
 
 ### `urls::is_accounts_host` accepts country domains
 

@@ -47,8 +47,14 @@ function makeDocument(dom = {}) {
   };
 }
 
-/** Load chat.js into a fresh context and hand back what it exported onto it. */
-function load({ dom = {}, onInvoke = () => Promise.resolve(), href } = {}) {
+/**
+ * Load chat.js into a fresh context and hand back what it exported onto it.
+ *
+ * `origin` is the interesting knob: chat.js decides how much of itself to
+ * install from `location.origin` alone, so it is what picks Chat, a page in
+ * transit, or the webview's own failed-load document ("null").
+ */
+function load({ dom = {}, onInvoke = () => Promise.resolve(), href, origin } = {}) {
   const calls = [];
   const document = makeDocument(dom);
 
@@ -61,7 +67,7 @@ function load({ dom = {}, onInvoke = () => Promise.resolve(), href } = {}) {
     // this one, and a location without it makes every link look external.
     location: {
       href: href || 'https://mail.google.com/chat/u/0/',
-      origin: 'https://mail.google.com',
+      origin: origin || 'https://mail.google.com',
       assign: () => {}
     },
     windowListeners,
@@ -139,7 +145,7 @@ function fire(document, type, event) {
 
 const anchor = (href, target) => ({ tagName: 'A', href, target, parentElement: null });
 
-console.log('[1/7] boot');
+console.log('[1/8] boot');
 {
   const { window, document, calls } = load({ href: 'https://mail.google.com/chat/u/0/?hl=en#chat/dm/AAAA' });
   const attached = calls.find((c) => c.command === 'page_log' && /attached to/.test(c.args.message));
@@ -163,7 +169,79 @@ console.log('[1/7] boot');
   check('is idempotent per document', calls.length === before, `${calls.length - before} extra call(s)`);
 }
 
-console.log('[2/7] notifications');
+/*
+ * chat.js is attached to the webview, so it runs on every page this window
+ * lands on -- a country sign-in domain, an employer's identity provider, a
+ * marketing page after a sign out. Only Chat gets the whole file. This is the
+ * section that says so.
+ */
+console.log('[2/8] where it runs');
+{
+  // Somebody's identity provider, mid sign-in.
+  const idp = load({
+    origin: 'https://login.example.test',
+    href: 'https://login.example.test/sso'
+  });
+
+  check('leaves the keyboard to an identity provider', !idp.document.listeners.keydown);
+  check('leaves window.Notification alone off Chat', idp.window.Notification === undefined);
+  check(
+    'does not scrape a page that has no unread count',
+    !idp.calls.some((c) => c.command === 'set_unread_count')
+  );
+  check(
+    'does not announce itself where the bridge cannot hear it',
+    !idp.calls.some((c) => c.command === 'page_log')
+  );
+
+  let prevented = 0;
+  const clickOn = (context, target) =>
+    fire(context.document, 'click', {
+      target,
+      preventDefault: () => prevented++,
+      stopPropagation: () => {}
+    });
+
+  // The whole reason anything at all runs here: wry has no window-open handler,
+  // so a link asking for a second window opens nothing and looks broken.
+  clickOn(idp, anchor('https://login.example.test/help', '_blank'));
+  check(
+    'still catches a link that asks for a window nobody will open',
+    idp.calls.some((c) => c.command === 'open_external_url'),
+    'a _blank link went nowhere'
+  );
+  check('window.open is answered too', typeof idp.window.open.__gchat_native === 'function');
+
+  // And the one that used to be taken and no longer is. An ordinary link is
+  // something the page can follow by itself, and taking it stops the page's own
+  // click handler -- which on a sign-in form is where the sign-in happens.
+  const before = idp.calls.length;
+  clickOn(idp, anchor('https://elsewhere.example.test/next'));
+  check('leaves an ordinary link to the page it is on', prevented === 1, `prevented ${prevented}`);
+  check('and asks Rust nothing about it', idp.calls.length === before);
+
+  // Reported in the wild: signed out onto a Google marketing page, where "Sign
+  // in" is the only way back. It has to still be a link that works.
+  const marketing = load({
+    origin: 'https://workspace.google.com',
+    href: 'https://workspace.google.com/intl/en-US/gmail/'
+  });
+  let stopped = 0;
+  fire(marketing.document, 'click', {
+    target: anchor('https://accounts.google.com/ServiceLogin'),
+    preventDefault: () => stopped++,
+    stopPropagation: () => {}
+  });
+  check('never swallows the way back to the sign-in form', stopped === 0);
+
+  // The failed-load document: no origin, and nothing to offer it but the page
+  // that replaces it. Section 8 covers that page itself.
+  const failed = load({ origin: 'null', href: 'https://mail.google.com/chat/u/0' });
+  check('leaves the failed-load document unhandled', !failed.document.listeners.click);
+  check('and untouched by the notification shim', failed.window.Notification === undefined);
+}
+
+console.log('[3/8] notifications');
 {
   const { window, calls } = load();
   const shown = new window.Notification('Ankur', { body: 'hello', tag: 'dm/42', data: { url: 'x' } });
@@ -205,7 +283,7 @@ console.log('[2/7] notifications');
   check('marks where it came from', swCall.args.title === 'SW');
 }
 
-console.log('[3/7] links');
+console.log('[4/8] links');
 {
   const { window, calls } = load();
   window.open('https://example.test/page');
@@ -216,7 +294,7 @@ console.log('[3/7] links');
   check('returns something usable to Google', !!stub && typeof stub.close === 'function' && stub.closed === false);
 }
 
-console.log('[4/7] click interception');
+console.log('[5/8] click interception');
 {
   const { document, calls } = load();
   let prevented = 0;
@@ -260,7 +338,7 @@ console.log('[4/7] click interception');
   check('ignores a click on something that is not a link', prevented === 2, `prevented ${prevented}`);
 }
 
-console.log('[5/7] keyboard shortcuts');
+console.log('[6/8] keyboard shortcuts');
 {
   const focused = [];
   const searchBox = {
@@ -330,7 +408,7 @@ console.log('[5/7] keyboard shortcuts');
  * `[role="search"]` landmark holding a hidden "Close search" and the visible
  * button that opens the box.
  */
-console.log('[5b/7] Ctrl+F with the search box collapsed');
+console.log('[6b/8] Ctrl+F with the search box collapsed');
 {
   const clicked = [];
   const focused = [];
@@ -412,7 +490,7 @@ console.log('[5b/7] Ctrl+F with the search box collapsed');
 
 /* And when there is no search region at all -- the sign-in page, or a Google
  * marketing page -- the key has to be left alone rather than swallowed. */
-console.log('[5c/7] Ctrl+F where there is no search box');
+console.log('[6c/8] Ctrl+F where there is no search box');
 {
   const { document } = load({ dom: { querySelector: () => null } });
 
@@ -435,12 +513,16 @@ console.log('[5c/7] Ctrl+F where there is no search box');
  * main and the report moves in with them.
  */
 async function rest() {
-  console.log('[6/7] hand-off fallback');
+  console.log('[7/8] hand-off fallback');
   {
     // The capability names mail.google.com and chat.google.com and nothing
     // else, so on Google's post-sign-out marketing page every invoke is turned
-    // down. The link has to go somewhere anyway, or the page is a dead end.
+    // down. A plain link is left to the page there (section 2), but one marked
+    // _blank is still ours to place -- and it has to go somewhere, or it is the
+    // dead end all over again.
     const { window, document, calls } = load({
+      origin: 'https://workspace.google.com',
+      href: 'https://workspace.google.com/intl/en-US/gmail/',
       onInvoke: (command) => {
         if (command === 'open_external_url') throw new Error('ACL: origin not allowed');
       }
@@ -452,7 +534,7 @@ async function rest() {
     console.warn = () => {};
     console.error = () => {};
     fire(document, 'click', {
-      target: anchor('https://accounts.google.com/ServiceLogin'),
+      target: anchor('https://accounts.google.com/ServiceLogin', '_blank'),
       preventDefault: () => {},
       stopPropagation: () => {}
     });
@@ -484,7 +566,7 @@ async function rest() {
     );
   }
 
-  console.log('[7/7] webview error page');
+  console.log('[8/8] webview error page');
   {
     // What WebKitGTK builds for a failed load: an empty head, and a body with
     // one line of text and no elements. Unstyled, so black on the window's
@@ -501,6 +583,8 @@ async function rest() {
     const FAILED = 'https://mail.google.com/chat/u/0';
     const { window, calls } = load({
       href: FAILED,
+      // Measured: the document keeps the URL that failed and loses the origin.
+      origin: 'null',
       dom: {
         head: { children: [] },
         body,
@@ -549,7 +633,7 @@ async function rest() {
       innerHTML: '',
       querySelectorAll: () => []
     };
-    load({ dom: { head: { children: [] }, body, readyState: 'complete' } });
+    load({ origin: 'null', dom: { head: { children: [] }, body, readyState: 'complete' } });
     check(
       'escapes the message it was handed',
       !body.innerHTML.includes('<img') && body.innerHTML.includes('&lt;img'),
@@ -570,6 +654,7 @@ async function rest() {
     const button = { listeners: [], addEventListener: (t, h) => button.listeners.push(h) };
     const { window } = load({
       href: CANONICAL,
+      origin: 'null',
       dom: {
         head: { children: [] },
         body,
@@ -582,18 +667,22 @@ async function rest() {
       window.location.href);
   }
   {
-    // A real page must be left entirely alone, including one caught mid-parse.
+    // The fingerprint is narrow on purpose: WKWebView leaves the document empty
+    // instead of writing a message into it, and a page still parsing looks the
+    // same as one that never arrived. Both reach here with no origin, so it is
+    // the fingerprint and not the scope that has to turn them away.
     const body = {
       children: [{}],
       textContent: 'Chat',
       innerHTML: '<div>real</div>',
       querySelectorAll: () => []
     };
-    load({ dom: { body, readyState: 'complete' } });
+    load({ origin: 'null', dom: { body, readyState: 'complete' } });
     check('leaves a real page alone', body.innerHTML === '<div>real</div>', body.innerHTML);
 
     const parsing = { children: [], textContent: '', innerHTML: '', querySelectorAll: () => [] };
-    load({ dom: { head: { children: [] }, body: parsing, readyState: 'complete' } });
+    const stillParsing = { head: { children: [] }, body: parsing, readyState: 'complete' };
+    load({ origin: 'null', dom: stillParsing });
     check('leaves an empty document alone', parsing.innerHTML === '', parsing.innerHTML);
   }
 

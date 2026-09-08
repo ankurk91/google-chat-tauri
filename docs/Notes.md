@@ -41,9 +41,14 @@ later, and one of these was wrong for exactly that reason.
   the main thread, and `on_page_load` *is* the main thread, inside WebKit's own `load-changed` handler.
   `run_on_main_thread` is no escape — it goes through the same function.
 - **An ACL rejection leaves a page's links dead.** The capability names `mail.google.com` and `chat.google.com`, so
-  `invoke` from any other origin is refused. An initialization script cannot run on some documents and not others, so
-  the interceptor is everywhere — and on an uncovered origin it would call `preventDefault()` and swallow the rejection.
-  Worst case, reported: signed out on a Google marketing page, where "Sign in" is the only way back.
+  `invoke` from any other origin is refused. An initialization script runs on every top-level document — Tauri's own
+  docs say so and recommend checking `window.location` — so the script is *there* on an uncovered origin whatever it
+  does; what it must not do is call `preventDefault()` and then swallow the rejection. Worst case, reported: signed out
+  on a Google marketing page, where "Sign in" is the only way back. `location.origin` is the right thing to branch on
+  because it is what Tauri itself checks, so "the bridge will answer" and "this is Chat" cannot disagree.
+- **wry has no window-open handler.** A `target="_blank"` link or a `window.open` call opens nothing at all — not a
+  window, not a tab, not the current one. This is why link hand-off is the one piece of `chat.js` that still runs off
+  the Chat origins: everything else there is either refused by the ACL or has no page to act on.
 
 ## Sign-in
 

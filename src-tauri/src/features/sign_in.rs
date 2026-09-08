@@ -31,8 +31,9 @@ pub fn check(window: &WebviewWindow, url: &url::Url) {
     if !state.claim_rescue() {
         // The sign-in form is bouncing straight back here. Another hop would
         // only loop, and a loop is worse than a dead end the user can click
-        // their own way out of -- which they now can, because `chat.js` falls
-        // back to navigating when the ACL rejects a hand-off.
+        // their own way out of -- which they now can: off the Chat origins
+        // `chat.js` leaves an ordinary link to the page that owns it, and for
+        // the ones it does take it falls back to navigating this window.
         log::warn!(
             "sign-in: back at {} after redirecting twice; leaving it alone",
             crate::redact::foreign_url(url)

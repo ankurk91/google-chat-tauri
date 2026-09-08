@@ -6,6 +6,13 @@
  * real mechanism) and again from on_page_load(Finished) as a fallback -- so
  * everything below must be idempotent per document.
  *
+ * It is attached to the *webview* rather than to the Chat page, though: Tauri
+ * runs an initialization script at document-start on every top-level navigation
+ * this window makes, and this window goes a good deal further afield than Chat.
+ * So the sections below only define their half of the app. The boot block at
+ * the end is what decides how much of it the document in front of us has any
+ * business receiving.
+ *
  * No bundler and no build step: what is written here is what runs, so it has to
  * be what every supported webview already understands. The floors are WebKitGTK
  * on Ubuntu 24.04, WKWebView on macOS 15 (Safari 18) and evergreen WebView2, so
@@ -27,10 +34,26 @@
 
   const POLL_MS = 1000;
 
-  // Set once the webview's failed-load page has been rewritten (see the
-  // error-page section below). Shared with the unread poller, which must not
-  // scrape our own markup and report nothing unread.
-  let showingErrorPage = false;
+  /* ---------------------------------------------------------- where we are */
+
+  /* The origins the app is made of.
+   *
+   * Kept in step with `capabilities/remote-chat.json` by a test in `inject`:
+   * this list and the capability's `remote.urls` are two spellings of the same
+   * set, and the day they disagree is the day the bridge goes quiet on a page
+   * that still looks like Chat. */
+  const CHAT_ORIGINS = ['https://mail.google.com', 'https://chat.google.com'];
+
+  const onChatOrigin = CHAT_ORIGINS.includes(location.origin);
+
+  /* A document with no origin of its own. The webview's failed-load page is
+   * what arrives this way: `location.href` is still the URL that failed, but
+   * the document is opaque and `location.origin` reads "null" -- which is also
+   * why Tauri refuses every invoke from it, capability or no capability.
+   * Whether it really is that page is settled later by the fingerprint in
+   * `isWebviewErrorPage`. This only says it is not a page anything else in here
+   * has any business touching. */
+  const onOpaqueDocument = location.origin === 'null' || !location.origin;
 
   /* ---------------------------------------------------------------- bridge */
 
@@ -156,8 +179,6 @@
   let lastHasUnread = null;
 
   function pollUnread() {
-    if (showingErrorPage) return;
-
     const count = readUnreadCount();
     let hasUnread = readHasUnread();
     if (hasUnread === null) hasUnread = lastHasUnread === null ? count > 0 : lastHasUnread;
@@ -174,14 +195,13 @@
    * setWindowOpenHandler. Tauri has no equivalent hook for window.open, so the
    * interception happens here and the policy decision stays in Rust. */
 
-  /* The IPC only answers on the origins named in the app's capability --
-   * mail.google.com and chat.google.com. Google can leave the window somewhere
-   * else entirely: a sign-in hop through a country domain, an external identity
-   * provider, or, after a sign out, one of its own marketing pages. There the
-   * ACL rejects every hand-off, and swallowing that rejection is what leaves
-   * those pages with dead links -- the "Sign in" link included, which is the
-   * only way back and is why someone ends up wiping the profile to log in
-   * again.
+  /* The IPC only answers on the origins named in the app's capability, and
+   * Google can leave this window somewhere else entirely: a sign-in hop through
+   * a country domain, an external identity provider, one of its own marketing
+   * pages after a sign out. There the ACL rejects the hand-off -- and a
+   * rejection swallowed after `preventDefault()` is a link that does nothing at
+   * all, the "Sign in" link included, which is the only way back and is why
+   * someone ends up wiping the profile to log in again.
    *
    * So when Rust cannot be asked, do the plain thing the click was going to do
    * and navigate this window. Nothing is given up by it: the allow-list exists
@@ -198,23 +218,6 @@
     });
   }
 
-  const nativeOpen = window.open;
-  window.open = function (url) {
-    log('info', `window.open intercepted: ${redactUrl(url)}`);
-    handOff(url);
-    // Returning null makes some Google flows throw; hand back an inert stub.
-    return {
-      closed: false,
-      close: ignore,
-      focus: ignore,
-      blur: ignore,
-      postMessage: ignore,
-      document: null,
-      location: { href: url || '' }
-    };
-  };
-  window.open.__gchat_native = nativeOpen;
-
   function isCrossOrigin(href) {
     try {
       const target = new URL(href, location.href);
@@ -225,28 +228,66 @@
     }
   }
 
-  document.addEventListener(
-    'click',
-    (event) => {
-      let anchor = event.target;
-      while (anchor && anchor.tagName !== 'A') anchor = anchor.parentElement;
-      if (!anchor || !anchor.href) return;
+  /* Which clicks this window takes off the page -- and it is not the same set
+   * in both places it runs.
+   *
+   * On Chat the allow-list is the entire point: someone pastes a Docs link into
+   * a conversation and it belongs in their real browser, so every cross-origin
+   * click is handed to Rust to be judged.
+   *
+   * In transit there is no allow-list left to enforce, because
+   * `open_external_url` is refused there anyway -- and the page in front of us
+   * is an identity provider or a sign-in form, not somewhere colleagues paste
+   * links. Taking an ordinary cross-origin click there buys nothing and costs
+   * the page its own click handler, which is how a sign-in button that does its
+   * work in JavaScript gets broken. What is still worth taking is a link asking
+   * for a second window, because wry has no handler to give it one: nothing
+   * opens at all, and the link looks dead. `handOff` navigates this window
+   * instead, which is where the user was going. */
 
-      const opensNewWindow = anchor.target === '_blank' || anchor.target === '_new';
-      if (!opensNewWindow && !isCrossOrigin(anchor.href)) {
-        // Same-origin in-page navigation: Chat's own SPA routing. Leave it be.
-        return;
-      }
+  const opensNewWindow = (anchor) => anchor.target === '_blank' || anchor.target === '_new';
 
-      event.preventDefault();
-      event.stopPropagation();
-      log('info', `link intercepted: ${redactUrl(anchor.href)}`);
-      // Rust decides whether this opens in the system browser or navigates the
-      // main window -- one source of truth for the allow-list.
-      handOff(anchor.href);
-    },
-    true
-  );
+  const everyForeignLink = (anchor) => opensNewWindow(anchor) || isCrossOrigin(anchor.href);
+
+  function installLinkPolicy(needsHandOff) {
+    const nativeOpen = window.open;
+    window.open = function (url) {
+      log('info', `window.open intercepted: ${redactUrl(url)}`);
+      handOff(url);
+      // Returning null makes some Google flows throw; hand back an inert stub.
+      return {
+        closed: false,
+        close: ignore,
+        focus: ignore,
+        blur: ignore,
+        postMessage: ignore,
+        document: null,
+        location: { href: url || '' }
+      };
+    };
+    window.open.__gchat_native = nativeOpen;
+
+    document.addEventListener(
+      'click',
+      (event) => {
+        let anchor = event.target;
+        while (anchor && anchor.tagName !== 'A') anchor = anchor.parentElement;
+        if (!anchor || !anchor.href) return;
+
+        // Chat's own SPA routing, or a link the page it is on can follow
+        // perfectly well without us. Leave it be.
+        if (!needsHandOff(anchor)) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        log('info', `link intercepted: ${redactUrl(anchor.href)}`);
+        // Rust decides whether this opens in the system browser or navigates
+        // the main window -- one source of truth for the allow-list.
+        handOff(anchor.href);
+      },
+      true
+    );
+  }
 
   /* --------------------------------------------------- keyboard shortcuts */
   /* This used to say that GTK menu accelerators never arrive while focus is in
@@ -368,28 +409,30 @@
     return null;
   }
 
-  document.addEventListener(
-    'keydown',
-    (event) => {
-      const action = shortcutFor(event);
-      if (!action) return;
+  function installShortcuts() {
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        const action = shortcutFor(event);
+        if (!action) return;
 
-      if (action === 'search') {
-        // Only swallow the key if there is actually a search box to focus,
-        // so Chat's own find-in-page behaviour is not broken when there isn't.
-        if (focusSearch()) {
-          event.preventDefault();
-          event.stopPropagation();
+        if (action === 'search') {
+          // Only swallow the key if there is actually a search box to focus,
+          // so Chat's own find-in-page behaviour is not broken when there isn't.
+          if (focusSearch()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          return;
         }
-        return;
-      }
 
-      event.preventDefault();
-      event.stopPropagation();
-      invoke('menu_action', { action }).catch(ignore);
-    },
-    true
-  );
+        event.preventDefault();
+        event.stopPropagation();
+        invoke('menu_action', { action }).catch(ignore);
+      },
+      true
+    );
+  }
 
   /* ------------------------------------------------------ notifications */
   /* Replaces electron src/preload/overrideNotifications.ts.
@@ -545,17 +588,19 @@
   GChatNotification.permission = 'granted';
   GChatNotification.maxActions = 0;
 
-  window.Notification = GChatNotification;
+  function installNotifications() {
+    window.Notification = GChatNotification;
 
-  // Chat may deliver notifications through a service worker rather than
-  // constructing them directly; route those to the same place.
-  const registration = window.ServiceWorkerRegistration;
-  if (registration && registration.prototype.showNotification) {
-    registration.prototype.showNotification = function (title, options) {
-      new GChatNotification(title, options, 'sw');
-      return Promise.resolve();
-    };
-    registration.prototype.getNotifications = () => Promise.resolve([]);
+    // Chat may deliver notifications through a service worker rather than
+    // constructing them directly; route those to the same place.
+    const registration = window.ServiceWorkerRegistration;
+    if (registration && registration.prototype.showNotification) {
+      registration.prototype.showNotification = function (title, options) {
+        new GChatNotification(title, options, 'sw');
+        return Promise.resolve();
+      };
+      registration.prototype.getNotifications = () => Promise.resolve([]);
+    }
   }
 
   // A notification created through the service worker registration has no
@@ -691,10 +736,12 @@
    * free: with and without the trailing slash are the same page. So aim at
    * whichever of the two is not the one that failed.
    *
-   * The same opaque origin is why `isCrossOrigin` calls every link on this page
-   * external, which is what made the first version of this button -- an
-   * ordinary anchor -- get swallowed by the click interceptor above. A button
-   * with a handler sidesteps that as well. */
+   * The first version of this was an anchor, which had a second problem on top
+   * of the first: the opaque origin makes `isCrossOrigin` call every link on
+   * this page external, so the interceptor swallowed the click. That
+   * interceptor is no longer installed here -- see the boot block -- but an
+   * anchor still cannot navigate to the URL it is standing in for, so a button
+   * with a handler it remains. */
   function tryAgain() {
     location.href = location.href === CHAT_URL ? CHAT_URL.replace(/\/$/, '') : CHAT_URL;
   }
@@ -706,7 +753,6 @@
     // no route to the host, a name that would not resolve, a certificate -- and
     // that is worth more than a tidier message of our own.
     const reason = String(document.body.textContent).trim();
-    showingErrorPage = true;
 
     // This never arrives from a real error page -- the opaque origin below sees
     // to that -- and it is worth sending anyway: if the fingerprint ever
@@ -741,15 +787,38 @@
     else window.addEventListener('load', callback);
   }
 
-  whenReady(() => {
-    log('info', `chat.js attached to ${redactUrl(location.href)}`);
-    listenForActivation();
-    pollUnread();
-    setInterval(pollUnread, POLL_MS);
-  });
+  /* How much of the above the document in front of us gets. Everything here
+   * hangs off `location.origin`, which is the same thing Tauri's ACL decides
+   * on, so "the bridge will answer" and "this is Chat" cannot drift apart. */
 
-  // Separate from whenReady: this wants a finished document rather than a ready
-  // bridge, and on a page that failed to load there may be no working bridge at
-  // all.
-  whenLoaded(replaceWebviewErrorPage);
+  if (onChatOrigin) {
+    // Chat itself. All of it.
+    installLinkPolicy(everyForeignLink);
+    installShortcuts();
+    installNotifications();
+
+    whenReady(() => {
+      log('info', `chat.js attached to ${redactUrl(location.href)}`);
+      listenForActivation();
+      pollUnread();
+      setInterval(pollUnread, POLL_MS);
+    });
+  } else if (onOpaqueDocument) {
+    // The failed-load page. Rewriting it needs no bridge, which is just as
+    // well, because it has none -- and it wants a finished document rather than
+    // a ready one, because a page still parsing looks exactly like a page that
+    // never arrived.
+    whenLoaded(replaceWebviewErrorPage);
+  } else {
+    /* In transit: a country sign-in domain, an employer's identity provider
+     * while the link grant is open, a Google marketing page after a sign out.
+     *
+     * One thing runs here, and only because the alternative is a dead link.
+     * The rest would be this app rearranging a page that is not its own for no
+     * gain at all: the shortcuts are swallowed and then refused, the shim
+     * promises a notification permission it cannot honour, the poller scrapes a
+     * page that has no unread count in it, and the click interceptor takes
+     * clicks the page could serve better itself. */
+    installLinkPolicy(opensNewWindow);
+  }
 })();

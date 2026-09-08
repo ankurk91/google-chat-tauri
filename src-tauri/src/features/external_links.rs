@@ -10,9 +10,13 @@
 //! non-http(s) schemes.
 //!
 //! The real guard is in `chat.js`, which -- because `initialization_script`
-//! injects into the main frame only -- is inherently top-level. It hands
-//! `target=_blank` and cross-origin link clicks to `commands::open_external_url`,
-//! which applies the strict allow-list ported from the electron app.
+//! injects into the main frame only -- is inherently top-level. On the Chat
+//! origins it hands `target=_blank` and cross-origin link clicks to
+//! `commands::open_external_url`, which applies the strict allow-list ported
+//! from the electron app. Elsewhere there is no allow-list left to apply: this
+//! command is one of the five the capability names, so it is refused off those
+//! origins, and `chat.js` takes only the links that would otherwise open
+//! nothing at all. See the scope table in `docs/Workarounds.md`.
 //!
 //! This also matches what electron actually did: it had no `will-navigate`
 //! handler at all, only `setWindowOpenHandler`.
