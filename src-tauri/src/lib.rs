@@ -166,6 +166,13 @@ pub fn run() {
             features::tray::create(handle)?;
             features::close_to_tray::attach(&window);
 
+            // Windows dispatches menu accelerators from tao's message loop,
+            // which never sees a key while the webview has focus. Quit and
+            // close-to-tray are asked of WebView2 directly instead; the rest of
+            // the table is served by chat.js. See `features::accelerators`.
+            #[cfg(target_os = "windows")]
+            features::accelerators::install(&window);
+
             if prefs.zoom != 1.0 {
                 let _ = window.set_zoom(prefs.zoom);
             }

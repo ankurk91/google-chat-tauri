@@ -65,10 +65,72 @@ running, see [Development.md](Development.md).
 
   That last row is the one to keep in mind: GTK consumes an accelerator before the webview sees the key, so `chat.js`
   never gets a keydown for anything the menu claims and the two paths do not double-fire. The `chat.js` forwarding is
-  therefore redundant on Linux rather than load-bearing — leave it, because Windows is a different story (see "Where
-  this stands" in [Development.md](Development.md)) —
+  therefore redundant on Linux rather than load-bearing — leave it, because Windows is the other way round and that
+  table is the only thing running there (see the next entry) —
   and any *new* menu accelerator takes that key away from the page. Ctrl+F stays in `chat.js` precisely because no menu
   item claims it.
+- **Windows menu accelerators are decoration, and WebView2 reserves no key at all.** The opposite of the entry above, and
+  the two halves have to be read together. Tauri does register the accelerator table — muda builds an `HACCEL` and
+  `tauri::app` installs a `msg_hook` calling `TranslateAcceleratorW` — but that hook only sees messages that reach tao's
+  message loop, and while the webview has focus, which is always, WebView2 has them instead. Measured on Windows 11
+  26200 (VirtualBox guest, no 3D, WebView2 152.0.4191.66) with synthetic keystrokes, the window checked foreground
+  before and after each one:
+
+  | key | result |
+    |---|---|
+  | Ctrl+W | window still visible, no `menu:` line |
+  | Ctrl+Q | process still alive, no `menu:` line |
+  | clicking the same items | `menu: close-to-tray`, `menu: quit` — so the handler was never the problem |
+
+  The Win32 menu itself is correct, which is worth knowing before hunting a drawing bug: reading it back with
+  `GetMenuStringW` gives `Close to Tray\tCtrl+W`, `Quit\tCtrl+Q` and `Zoom In\tCtrl+=`, and Windows renders all three.
+  There is no missing label here and no Fullscreen item — that one has been macOS-only since `d09808b`.
+
+  What WebView2 does instead is hand *everything* to the page. Measured by pointing `APP_URL` at a local probe page for
+  one run: `ctrl+w`, `ctrl+q`, `ctrl+=`, `ctrl+-`, `ctrl+0`, `ctrl+f`, `ctrl+shift+w`, `ctrl+shift+q`, `ctrl+m`,
+  `ctrl+h`, `ctrl+shift+h`, `alt+home`, `f11`, `ctrl+n`, `ctrl+t` — every one arrived at a `keydown` listener. So
+  **choosing a different shortcut fixes nothing**; there was never a key WebView2 was eating. `chat.js`'s forwarding is
+  the mechanism that works, and with the probe origin added to the capability it does: Ctrl+W logged
+  `menu: close-to-tray` and hid the window, Ctrl+= took zoom 1.0 → 1.2 over two presses, one step each.
+
+  That leaves the two the page cannot serve. Forwarding needs an origin the capability names, so Ctrl+W did nothing on
+  the sign-in page — which is where anyone testing a fresh build tries it, and why this was reported as "Ctrl+W does not
+  work" when signing in first would have shown it working. And Ctrl+Q is refused from the page on purpose by
+  `commands::menu_action`. Both now go through `features::accelerators`, which asks WebView2 for them directly via
+  `AcceleratorKeyPressed` on the `ICoreWebView2Controller` that `PlatformWebview::controller` hands out. `SetHandled(true)`
+  really does take the key off the page, rather than merely suppressing WebView2's own default — verified against the
+  probe with the hook installed: it sees Ctrl+= and does **not** see Ctrl+W, while Ctrl+W still closes to tray. So
+  there is no double-fire, and the arrangement matches Linux, where GTK does the same thing.
+
+  `wry` has `with_browser_accelerator_keys`, and it is not the answer even if Tauri plumbed it through (it does not —
+  only `additional_browser_args` reaches wry from `tauri` 2.11): it turns off WebView2's *own* browser shortcuts, which
+  were never what stood in the way.
+- **Ctrl+F only ever worked with Chat's search box already open, and Windows is where that showed.** `chat.js` looked
+  for `input[name="q"]` and required it visible. Measured on the signed-in page with the box shut: the input is there
+  — count 1 — and `isVisible` is **false**, because Chat collapses search to a single button and leaves the input in
+  the DOM behind it. So the lookup failed in exactly the state the key is pressed in, `focusSearch` returned false, and
+  nothing called `preventDefault`. On Linux that was silent; on Windows WebView2 opened its own find-on-page bar, which
+  is how it was noticed at all. The shortcut worked only when the box was already open, which is when nobody needs it.
+
+  Opening it means clicking Chat's own button, and the handle is the `[role="search"]` landmark rather than the
+  button's label. Measured, with the box shut:
+
+  ```
+  buttons  0:Close search/vis=false/w=0x0  1:Clear search/vis=false/w=0x0  2:Search chat/vis=true/w=42x46
+  ```
+
+  One landmark, holding the input and three buttons of which exactly one is visible — so "the visible one" identifies
+  it without reading `aria-label`, which is English here and something else wherever the app is used in another
+  language. A plain `.click()` on it is enough; no synthetic pointer sequence and no trusted event is needed, which was
+  the first thing suspected when the box did not open.
+
+  The reason it did not open was **the timeout, and the unit it was written in**. `focusWhenExpanded` retried on
+  `requestAnimationFrame` for twenty frames, and the box takes about **300 ms** to draw on the machine this was measured
+  on — a VirtualBox guest with no 3D acceleration, compositing through llvmpipe. Twenty frames ran out first, the focus
+  never landed, and **Chat closes the box again when nothing inside it is focused** — so the symptom was a Ctrl+F that
+  appeared to do nothing at all, indistinguishable from the click having been ignored. The budget is wall-clock now
+  (1.5 s), with rAF still doing the waiting. A frame is not a unit of time on a software-rendered desktop, and this
+  repo runs on one.
 - **Undo and Redo do not exist on Linux as predefined items.** muda documents them Unsupported there, so `.undo()` and
   `.redo()` add nothing and the Edit menu opened with Cut. Custom items driving `document.execCommand` fill the gap
   (verified: typed into the sign-in field, Edit → Undo cleared it). They deliberately carry no accelerator, per the

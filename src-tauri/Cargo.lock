@@ -1608,6 +1608,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "ureq",
  "url",
+ "webview2-com",
 ]
 
 [[package]]

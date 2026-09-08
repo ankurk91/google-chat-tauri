@@ -61,6 +61,16 @@ tauri-plugin-notification = "2"
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = "4"
 
+# Windows menu accelerators never reach tao's message loop, so Quit and
+# close-to-tray are asked of WebView2 through `AcceleratorKeyPressed`; see
+# `features::accelerators` for the measurement. Tauri hands out the
+# `ICoreWebView2Controller` and types it with this crate, so the version has to
+# be the one Tauri resolves -- a mismatch is two incompatible copies of the same
+# COM interface, and the call will not typecheck. It is already in the tree via
+# Tauri and adds nothing to the build.
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.38"
+
 [features]
 default = []
 # `pnpm tauri dev` enables devtools automatically; this is for release debugging.

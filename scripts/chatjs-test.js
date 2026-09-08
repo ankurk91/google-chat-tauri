@@ -106,8 +106,22 @@ function load({ dom = {}, onInvoke = () => Promise.resolve(), href } = {}) {
   // every link same-origin. Every webview has it.
   context.URL = URL;
 
+  // Same reasoning for rAF, which chat.js uses to wait out Chat's own search
+  // animation. Queued rather than run, so a test can step the frames it wants
+  // and assert what happened after each -- running it inline would recurse the
+  // whole retry loop before the fake DOM had a chance to change.
+  const frames = [];
+  context.requestAnimationFrame = (fn) => frames.push(fn);
+  const drainFrames = (count = 1) => {
+    for (let i = 0; i < count; i++) {
+      const next = frames.shift();
+      if (!next) return;
+      next();
+    }
+  };
+
   vm.runInContext(fs.readFileSync(SCRIPT, 'utf8'), context, { filename: 'chat.js' });
-  return { window, document, calls };
+  return { window, document, calls, drainFrames };
 }
 
 /** Fire a listener chat.js registered on `window` rather than on `document`. */
@@ -282,6 +296,114 @@ console.log('[5/7] keyboard shortcuts');
 
   press('+', { ctrl: true, shift: true });
   check('accepts Ctrl+Shift+= as zoom in', actions().length === before + 1);
+}
+
+/*
+ * Chat's search is a button until you press it, and the input behind it is in
+ * the DOM the whole time with no box drawn around it -- which is the state
+ * Ctrl+F is pressed in, and the one the lookup used to miss. Measured on the
+ * signed-in page: one `input[name="q"]`, `isVisible` false, wrapped in a
+ * `[role="search"]` landmark holding a hidden "Close search" and the visible
+ * button that opens the box.
+ */
+console.log('[5b/7] Ctrl+F with the search box collapsed');
+{
+  const clicked = [];
+  const focused = [];
+  const hidden = { offsetWidth: 0, offsetHeight: 0, getClientRects: () => [] };
+  const shown = { offsetWidth: 100, offsetHeight: 20, getClientRects: () => [{}] };
+
+  // Starts collapsed. The click only *asks* for the box; it is not drawn until
+  // the next frame, which is the whole reason chat.js cannot focus inline --
+  // model that, or the test passes on a fake that is easier than the page.
+  let expanded = false;
+  let pending = false;
+  const paint = () => {
+    expanded = pending;
+  };
+  const input = {
+    focus: () => focused.push('search'),
+    get offsetWidth() {
+      return expanded ? shown.offsetWidth : hidden.offsetWidth;
+    },
+    get offsetHeight() {
+      return expanded ? shown.offsetHeight : hidden.offsetHeight;
+    },
+    getClientRects: () => (expanded ? [{}] : [])
+  };
+
+  const closeButton = Object.assign({ click: () => clicked.push('close') }, hidden);
+  const openButton = Object.assign(
+    {
+      click: () => {
+        clicked.push('open');
+        pending = true;
+      }
+    },
+    shown
+  );
+
+  const region = {
+    querySelectorAll: (sel) => (sel === 'button' ? [closeButton, openButton] : []),
+    querySelector: () => input
+  };
+
+  const { document, calls, drainFrames } = load({
+    dom: {
+      querySelector: (sel) => {
+        if (sel === 'input[name="q"]') return input;
+        if (sel === '[role="search"]') return region;
+        return null;
+      }
+    }
+  });
+
+  let prevented = 0;
+  fire(document, 'keydown', {
+    key: 'f',
+    ctrlKey: true,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    preventDefault: () => prevented++,
+    stopPropagation: () => {}
+  });
+
+  check('clicks the visible button, not the hidden Close search', clicked.join(',') === 'open');
+  check('swallows the key, so no find-on-page bar opens', prevented === 1);
+  check('does not focus before the box is drawn', focused.length === 0);
+
+  paint();
+  drainFrames(1);
+  check('focuses the input on the next frame', focused.length === 1);
+
+  drainFrames(5);
+  check('stops asking once it has focused', focused.length === 1);
+
+  check(
+    'never asks Rust to handle search',
+    !calls.some((c) => c.command === 'menu_action' && c.args.action === 'search')
+  );
+}
+
+/* And when there is no search region at all -- the sign-in page, or a Google
+ * marketing page -- the key has to be left alone rather than swallowed. */
+console.log('[5c/7] Ctrl+F where there is no search box');
+{
+  const { document } = load({ dom: { querySelector: () => null } });
+
+  let prevented = 0;
+  fire(document, 'keydown', {
+    key: 'f',
+    ctrlKey: true,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    preventDefault: () => prevented++,
+    stopPropagation: () => {}
+  });
+
+  check('leaves the key to the webview', prevented === 0);
 }
 
 /*

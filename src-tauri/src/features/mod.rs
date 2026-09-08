@@ -1,3 +1,5 @@
+#[cfg(target_os = "windows")]
+pub mod accelerators;
 pub mod app_menu;
 pub mod autostart;
 pub mod badge;

@@ -53,10 +53,23 @@ python3 scripts/reset-test.py          # Reset App Data really wipes the profile
 node scripts/chatjs-test.js            # chat.js against a stand-in page: no browser, no signed-in session
 ```
 
-The three harnesses need the single-instance slot to themselves — stop `pnpm run dev` first, or the running app answers
-instead of theirs. They observe X11 and so run the app under X11 whatever the session is; see "The harnesses only see
-X11" in [Notes.md](Notes.md) for what that does and does not prove, and leave the machine alone while one runs — the
-entry above it says what happens if you do not.
+On Windows, in PowerShell, one more — the only harness that does not need X11, because it is the one platform the
+others cannot reach at all:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows-shortcut-test.ps1
+```
+
+It reads the Win32 menu back with `GetMenuStringW` and injects real Ctrl+W and Ctrl+Q, which is the only way to tell a
+shortcut that is missing from one that is present, correct, and silently never dispatched — the failure mode Windows
+actually has. Verified to fail for the right reason: with `features::accelerators::install` commented out, the two
+keyboard checks fail and all five menu checks still pass.
+
+Every harness that starts the app needs the single-instance slot to itself — stop `pnpm run dev` first, or the running
+app answers instead of theirs. The three Python ones observe X11 and so run the app under X11 whatever the session is;
+see "The harnesses only see X11" in [Notes.md](Notes.md) for what that does and does not prove. All four drive the real
+desktop, so leave the machine alone while one runs — the entry above that one says what happens if you do not, and each
+of them aborts rather than reporting a false failure when focus wanders.
 
 The app closes to the tray, so the window's ✕ will not stop it. Kill it properly, or `dev` will refuse to start a second
 copy:
@@ -265,20 +278,23 @@ What is left, in the order it matters:
    macOS: a quick pass found nothing wrong, past the Gatekeeper block every unsigned build gets. Still unconfirmed
    there, because a quick pass would not touch them: the dock badge, and whether notifications arrive at all.
 
-   Windows 11 has been launched and reported on (by the maintainer, on hardware this repo's harnesses cannot reach —
-   none of the following is machine-verified here):
+   Windows 11 has been launched and reported on. The keyboard rows below are machine-verified — a Windows guest ran
+   `scripts/windows-shortcut-test.ps1`, which drives the built exe with real keystrokes and reads the Win32 menu back —
+   and the rest is still the maintainer's own report on hardware nothing here can reach:
 
    | behaviour | result |
      |---|---|
    | tray left-click toggles the window | **works** — the one thing this list used to call unknown |
    | Edit menu's Undo/Redo | present, as muda's predefined items |
-   | View → Toggle Full Screen | appeared and did nothing — muda draws it on Windows but does not implement it. Now macOS-only |
+   | View → Toggle Full Screen | appeared and did nothing — muda draws it on Windows but does not implement it. macOS-only since `d09808b`; the Win32 menu has been read back since to confirm it is gone |
    | taskbar unread counter | not seen. Windows has no numeric badge for an unpackaged app; `badge::apply` sets a taskbar *overlay icon* instead, and whether it renders depends on **Settings → Personalization → Taskbar → Show badges**. Cross-check against the window title, which carries the same count |
-   | Ctrl+Q, Ctrl+W | do nothing. WebView2 keeps the key, so the menu accelerator never fires — and `chat.js`'s forwarding cannot cover Ctrl+Q, because `menu_action` refuses `quit` from the page by design. Ctrl+R works, which is WebView2's own reload rather than the menu's |
-   | Ctrl+F, zoom keys | untested — worth knowing, because they go through the same forwarding as Ctrl+W and would say whether the page receives *any* of these keys or whether Ctrl+W alone is reserved |
+   | Ctrl+Q, Ctrl+W | **now work.** Menu accelerators never reach tao's message loop on Windows, so all of them were decoration; `features::accelerators` asks WebView2 for these two directly. Machine-verified on Windows 11 in this repo's own guest |
+   | zoom keys, Alt+Home | work, through `chat.js`'s forwarding — WebView2 delivers every combination to the page, so nothing there is reserved. Zoom is one step per press, and needs a signed-in session because forwarding is gated on the capability's origins |
+   | Ctrl+F | works, and was broken on every platform until this was looked at on Windows: it opened WebView2's find-on-page instead, because Chat keeps its search input hidden behind a button and `chat.js` gave up on not finding it. It now opens Chat's own search from collapsed. See the Ctrl+F entry in [Notes.md](Notes.md) |
+   | menu accelerator labels | correct. `GetMenuStringW` reads back `Zoom In\tCtrl+=` and the rest, and Windows draws them |
 
-   wry can turn WebView2's accelerator handling off (`with_browser_accelerator_keys`), which would hand these keys to
-   the page — but Tauri 2.11 does not plumb it through, so it is not reachable from here today.
+   The measurements behind all of that, and why `with_browser_accelerator_keys` is not the answer, are in
+   [Notes.md](Notes.md) under "Windows menu accelerators are decoration".
 2. **A notification click does not open the conversation, and cannot be made to.** It raises the window and stops there.
    This was open pending a look at a real payload; that has now happened, and the answer is that Chat has no
    per-conversation URL to navigate to and hangs no click handler — see the two notification entries in

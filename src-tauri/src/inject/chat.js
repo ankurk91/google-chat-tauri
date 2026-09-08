@@ -223,10 +223,17 @@
    * Ctrl+W and Ctrl+= reach the menu with focus in the page.
    *
    * GTK consumes the accelerator first, so on Linux nothing below fires for a
-   * key the menu claims -- one press is still one action, not two. It stays
-   * because Windows does not behave this way: WebView2 keeps the key and the
-   * menu's own accelerator never runs, which is what this forwarding is for
-   * there.
+   * key the menu claims -- one press is still one action, not two.
+   *
+   * Windows is the other way round: its menu accelerators never reach tao's
+   * message loop while the webview has focus, so the menu delivers none of
+   * them and this table is what actually runs. Zoom and history are served
+   * here. Ctrl+W is not, any more -- `features::accelerators` takes it from
+   * WebView2 before the page, because forwarding only works on an origin the
+   * capability names and Ctrl+W has to work on the sign-in page too. Measured:
+   * with that hook installed the probe page sees Ctrl+= and does not see
+   * Ctrl+W. The mapping below stays anyway, as cover for macOS, where nobody
+   * has yet checked whether WKWebView lets the menu have the key.
    *
    * Ctrl+F is handled locally (it just focuses an input) and is the one
    * shortcut deliberately not on a menu item, so the page keeps receiving it.
@@ -236,13 +243,71 @@
   const isVisible = (element) =>
     !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
 
+  const searchInput = () => document.querySelector('input[name="q"]');
+
+  /* Chat collapses its search to a single button, and the input behind it is in
+   * the DOM the whole time but hidden -- measured on the signed-in page with
+   * the box shut: `input[name="q"]` count 1, `isVisible` false. So the plain
+   * lookup below found nothing in precisely the state Ctrl+F is pressed in, and
+   * this returned false; on Linux that meant Ctrl+F did nothing, and on Windows
+   * it meant WebView2 opened its own find-on-page bar instead. Ctrl+F only ever
+   * worked with the box already open, which is when nobody needs it.
+   *
+   * Expanding it means clicking Chat's own button, and the handle for that is
+   * the `[role="search"]` landmark rather than the button's label: there is
+   * exactly one landmark, it holds the input, and it holds three buttons of
+   * which the first is a *hidden* "Close search" -- so "the visible one" is the
+   * rule, and it survives the app being used in a language where the label is
+   * not "Search chat". */
+  function expandSearch() {
+    const region = document.querySelector('[role="search"]');
+    if (!region) return false;
+
+    for (const button of region.querySelectorAll('button')) {
+      if (isVisible(button)) {
+        button.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /* Expanding is Chat's own animation, so the input is not focusable in the
+   * tick that asks for it -- and taking the focus is not optional: Chat closes
+   * the box again when nothing is focused inside it, so giving up early looks
+   * exactly like the click never landed.
+   *
+   * The budget is wall-clock, not a count of frames. Counting frames was the
+   * first attempt and it was wrong on the machine this was measured on: a
+   * VirtualBox guest with no 3D acceleration composites through llvmpipe, the
+   * box took about 300 ms to draw, and twenty frames ran out first -- so the
+   * search opened, was never focused, and shut again. A frame is not a unit of
+   * time on a software-rendered desktop. rAF still does the waiting, because
+   * it is the thing that fires when a frame is actually painted; only the
+   * stopping condition is a clock. */
+  const EXPAND_BUDGET_MS = 1500;
+
+  function focusWhenExpanded(deadline) {
+    const search = searchInput();
+    if (search && isVisible(search)) {
+      search.focus();
+      return;
+    }
+    if (Date.now() < deadline) {
+      requestAnimationFrame(() => focusWhenExpanded(deadline));
+    }
+  }
+
   function focusSearch() {
-    const search = document.querySelector('input[name="q"]');
+    const search = searchInput();
     if (search && isVisible(search)) {
       search.focus();
       return true;
     }
-    return false;
+
+    if (!expandSearch()) return false;
+    focusWhenExpanded(Date.now() + EXPAND_BUDGET_MS);
+    return true;
   }
 
   function shortcutFor(event) {
