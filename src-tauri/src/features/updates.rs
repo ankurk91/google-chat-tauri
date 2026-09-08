@@ -290,10 +290,7 @@ mod tests {
         assert_eq!(normalise(" 1.0.0 "), "1.0.0");
 
         let releases = [release("v1.0.0", false, false)];
-        assert_eq!(
-            newest(&releases).unwrap().1,
-            version("1.0.0")
-        );
+        assert_eq!(newest(&releases).unwrap().1, version("1.0.0"));
     }
 
     #[test]
