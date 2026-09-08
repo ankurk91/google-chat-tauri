@@ -1,6 +1,6 @@
 [package]
 name = "google-chat-tauri"
-version = "0.0.6"
+version = "0.0.7"
 description = "Unofficial desktop app for Google Chat."
 authors = ["ankurk91"]
 license = "GPL-3.0-only"
