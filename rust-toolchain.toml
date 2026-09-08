@@ -1,0 +1,15 @@
+# One compiler for CI, the release matrix and your own `cargo build`. rustup
+# reads this and switches automatically, downloading it the first time.
+#
+# The version is the floor set by our dependencies -- see `rust-version` in
+# src-tauri/Cargo.toml, which is kept identical. Pinning to the floor means a
+# dependency raising its MSRV breaks the build immediately, rather than the
+# declared minimum quietly going stale.
+#
+# It lives at the repo root, NOT in src-tauri/: rustup resolves this file from
+# the working directory, and every cargo command here runs from the root with
+# `--manifest-path src-tauri/Cargo.toml`. In src-tauri/ it would be ignored.
+[toolchain]
+channel = "1.89"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

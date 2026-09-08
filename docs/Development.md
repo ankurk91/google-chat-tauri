@@ -10,7 +10,11 @@ findings — the no-op APIs, the workarounds and what was measured to justify th
 ## Prerequisites
 
 - **Node 24+** and **pnpm 12**
-- **Rust** stable, from [rustup](https://rustup.rs) — no `sudo` needed
+- **Rust** from [rustup](https://rustup.rs) — no `sudo` needed, and no need to pick a version: `rust-toolchain.toml`
+  at the repo root pins one, and rustup switches to it (downloading it the first time) the moment you run `cargo`
+  anywhere in the tree. CI and the release matrix install the same way, so all three cannot drift apart. That pin
+  is the floor our dependencies impose rather than a support promise, and it climbs as crates are updated — raise
+  it there and in `rust-version` in `src-tauri/Cargo.toml` together, keeping the two identical
 - **Python 3.12+** for `scripts/`, which is what they are developed against (3.12.3 at the time of writing)
 - On Debian/Ubuntu/Mint:
 

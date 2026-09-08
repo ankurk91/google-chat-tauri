@@ -6,8 +6,14 @@ authors = ["ankurk91"]
 license = "GPL-3.0-only"
 repository = "https://github.com/ankurk91/google-chat-tauri"
 edition = "2021"
-# The floor, not a preference: ureq 3.4 needs 1.85 and nothing here needs newer.
-rust-version = "1.85"
+# The floor, not a preference: the highest MSRV anything in Cargo.lock asks for.
+# notify-rust 4.18 sets it, with image, time, plist and the icu crates just
+# behind at 1.88. Keep it identical to the channel in rust-toolchain.toml at the
+# repo root -- that is the compiler CI, the release and you actually use, so
+# building at the floor is what keeps this number from going stale. When a
+# dependency update raises its MSRV the build fails outright; raise both numbers
+# together rather than pinning the crate back.
+rust-version = "1.89"
 
 [lib]
 name = "app_lib"

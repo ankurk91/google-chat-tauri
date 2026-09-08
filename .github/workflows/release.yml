@@ -68,10 +68,17 @@ jobs:
           runtime: node@24
           cache: true
 
+      # Same compiler as ci.yml and a local build: rust-toolchain.toml at the
+      # repo root names it. A released binary is then built by a compiler we
+      # can name, not by whatever stable happened to be that week.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+        run: rustup toolchain install
+
+      # Not in rust-toolchain.toml: it would make every contributor on every
+      # platform download two Apple targets they will never build.
+      - name: Add macOS targets
+        if: matrix.platform == 'macos-latest'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
       - name: Restore Rust build cache
         uses: Swatinem/rust-cache@v2
