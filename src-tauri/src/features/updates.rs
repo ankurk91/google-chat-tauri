@@ -197,7 +197,7 @@ fn check() -> Outcome {
         Err(e) => return Outcome::Failed(format!("unreadable own version: {e}")),
     };
 
-    match newest(&releases, &running) {
+    match newest(&releases) {
         Some((release, version)) if version > running => Outcome::Available {
             version: version.to_string(),
             url: release.html_url.clone(),
@@ -213,30 +213,21 @@ fn check() -> Outcome {
 /// order as by version and does not have to be -- a patch to an older line gets
 /// published after a newer release. Comparing versions is the answer to the
 /// question actually being asked.
-fn newest<'a>(
-    releases: &'a [Release],
-    running: &semver::Version,
-) -> Option<(&'a Release, semver::Version)> {
+///
+/// Drafts and pre-releases are never offered, whatever is running. A beta
+/// reaches people who go looking for it on the releases page, not through
+/// this check.
+fn newest(releases: &[Release]) -> Option<(&Release, semver::Version)> {
     releases
         .iter()
         .filter(|release| !release.draft)
-        .filter(|release| !release.prerelease || wants_prereleases(running))
+        .filter(|release| !release.prerelease)
         .filter_map(|release| {
             semver::Version::parse(normalise(&release.tag_name))
                 .ok()
                 .map(|version| (release, version))
         })
         .max_by(|left, right| left.1.cmp(&right.1))
-}
-
-/// Whether pre-releases count as updates for whoever is running this.
-///
-/// They do while the app is itself pre-1.0 -- every release of it is a
-/// pre-release, and someone on 0.0.1 who is not told about 0.0.2 is not being
-/// served -- and for anyone already running a tagged pre-release. Once this
-/// reaches 1.0.0, a stable user stops being offered betas.
-fn wants_prereleases(running: &semver::Version) -> bool {
-    running.major == 0 || !running.pre.is_empty()
 }
 
 /// Release tags carry a leading `v`; `CARGO_PKG_VERSION` does not.
@@ -300,20 +291,16 @@ mod tests {
 
         let releases = [release("v1.0.0", false, false)];
         assert_eq!(
-            newest(&releases, &version("1.0.0")).unwrap().1,
+            newest(&releases).unwrap().1,
             version("1.0.0")
         );
     }
 
     #[test]
     fn a_prerelease_sorts_below_the_release_it_precedes() {
-        // semver's own rule, and the one this relies on: someone already on
-        // 1.1.0 must not be offered 1.1.0-beta.1 as an upgrade.
+        // semver's own rule, and the one the version comparison in check()
+        // relies on: 1.1.0-beta.1 is not an upgrade from 1.1.0.
         assert!(version("1.1.0-beta.1") < version("1.1.0"));
-
-        let releases = [release("v1.1.0-beta.1", false, true)];
-        let picked = newest(&releases, &version("1.1.0-beta.1")).unwrap();
-        assert!(picked.1 <= version("1.1.0-beta.1"), "would offer itself");
     }
 
     #[test]
@@ -337,32 +324,35 @@ mod tests {
     }
 
     #[test]
-    fn a_prerelease_is_offered_to_someone_on_a_pre_1_0_build() {
-        // The whole of 0.x is this app's pre-release era: every release of it
-        // is tagged pre-release, and someone on 0.0.1 must still hear about
-        // 0.0.2. This is the case that shipped broken.
+    fn a_prerelease_is_not_offered_to_someone_on_a_pre_1_0_build() {
+        // 0.x used to be carved out, because every 0.x release was itself
+        // tagged pre-release. Nothing is carved out now: a release marked
+        // pre-release is not an update for anybody.
         let releases = [release("v0.0.2", false, true)];
-        let picked = newest(&releases, &version("0.0.1")).unwrap();
-        assert_eq!(picked.1, version("0.0.2"));
+        assert!(newest(&releases).is_none());
     }
 
     #[test]
     fn a_prerelease_is_not_offered_to_someone_on_a_stable_build() {
         let releases = [release("v1.1.0-beta.1", false, true)];
-        assert!(newest(&releases, &version("1.0.0")).is_none());
+        assert!(newest(&releases).is_none());
     }
 
     #[test]
-    fn someone_already_on_a_beta_hears_about_the_next_one() {
+    fn someone_already_on_a_beta_is_not_offered_the_next_one() {
+        // Running a beta no longer opts you in. A beta tester hears about
+        // stable releases and finds the next beta himself.
         let releases = [release("v1.1.0-beta.2", false, true)];
-        let picked = newest(&releases, &version("1.1.0-beta.1")).unwrap();
-        assert_eq!(picked.1, version("1.1.0-beta.2"));
+        assert!(newest(&releases).is_none());
+
+        let releases = [release("v1.1.0", false, false)];
+        assert_eq!(newest(&releases).unwrap().1, version("1.1.0"));
     }
 
     #[test]
     fn drafts_are_never_offered() {
         let releases = [release("v9.9.9", true, false)];
-        assert!(newest(&releases, &version("0.0.1")).is_none());
+        assert!(newest(&releases).is_none());
     }
 
     #[test]
@@ -374,7 +364,7 @@ mod tests {
             release("v1.2.0", false, false),
             release("v1.0.5", false, false),
         ];
-        let picked = newest(&releases, &version("1.0.0")).unwrap();
+        let picked = newest(&releases).unwrap();
         assert_eq!(picked.1, version("1.2.0"));
     }
 
@@ -382,15 +372,15 @@ mod tests {
     fn a_tag_that_is_not_a_version_is_skipped_not_fatal() {
         let releases = [
             release("nightly", false, false),
-            release("v0.0.2", false, true),
+            release("v0.0.2", false, false),
         ];
-        let picked = newest(&releases, &version("0.0.1")).unwrap();
+        let picked = newest(&releases).unwrap();
         assert_eq!(picked.1, version("0.0.2"));
     }
 
     #[test]
     fn no_releases_at_all_is_not_an_error() {
-        assert!(newest(&[], &version("0.0.1")).is_none());
+        assert!(newest(&[]).is_none());
     }
 
     #[test]
@@ -416,9 +406,8 @@ mod tests {
         assert_eq!(releases.len(), 1);
         assert!(releases[0].prerelease);
 
-        // Someone running 0.0.1 is current; someone on 0.0.0 is behind.
-        assert!(newest(&releases, &version("0.0.1")).unwrap().1 == version("0.0.1"));
-        assert!(newest(&releases, &version("0.0.0")).unwrap().1 > version("0.0.0"));
+        // It parses, and being flagged pre-release it is offered to nobody.
+        assert!(newest(&releases).is_none());
     }
 
     #[test]
@@ -440,7 +429,7 @@ mod tests {
         assert!(release.html_url.ends_with("/tag/v1.1.0"));
         assert!(!release.draft && !release.prerelease);
 
-        let picked = newest(std::slice::from_ref(&release), &version("1.0.0")).unwrap();
+        let picked = newest(std::slice::from_ref(&release)).unwrap();
         assert!(picked.1 > version("1.0.0"));
     }
 

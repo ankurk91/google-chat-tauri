@@ -167,8 +167,11 @@ is something new, and silent about a version it has already offered (`offered_ve
 for Updates** always answers, because a manual check that appears to do nothing is indistinguishable from a broken one.
 **Preferences → Check for Updates Automatically** turns the scheduled half off.
 
-Pre-releases count as updates while the running version is itself pre-1.0 or carries a pre-release tag — the whole of
-`0.x` is this app's pre-release era. Once it reaches 1.0.0, a stable user stops being offered betas.
+A release flagged pre-release on GitHub is never offered, whatever is running. `0.x` used to be carved out — every
+release of it was tagged pre-release, so someone on 0.0.1 had to hear about 0.0.2 — and running a beta used to opt you
+into the next one. Neither holds from 1.0.0 on: the check offers stable releases only, and a beta is something people
+go to the releases page for. `release.yml` publishes with `prerelease: false`, so this filter is about anything flagged
+by hand.
 
 `features::connectivity` is the other half. The window points at a remote page, so with no route to the internet the
 webview shows an error page that says nothing about the app. One TCP connection to `chat.google.com:443` — no TLS, no
