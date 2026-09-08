@@ -81,10 +81,10 @@ pub fn log_startup(app: &AppHandle, prefs: &Prefs, launched_hidden: bool) {
     }
 
     if let Ok(dir) = app.path().app_config_dir() {
-        log::info!("config dir: {}", dir.display());
+        log::info!("config dir: {}", crate::redact::path(&dir));
     }
     if let Ok(dir) = app.path().app_log_dir() {
-        log::info!("log dir: {}", dir.display());
+        log::info!("log dir: {}", crate::redact::path(&dir));
     }
 
     log::info!(

@@ -61,6 +61,31 @@
   const log = (level, message) =>
     invoke('page_log', { level, message: String(message) }).catch(ignore);
 
+  /* A URL with nothing identifying left in it.
+   *
+   * Every URL on this page is one someone is looking at: the fragment names the
+   * conversation they have open (`#chat/dm/...`), the query on an attachment
+   * link carries a bearer token, and a link they clicked can be anything at
+   * all. The origin and the path shape are what a bug report needs -- they say
+   * which branch ran -- so keep those and drop the rest. Logs are written to be
+   * attached to a public issue; see `redact.rs` for the Rust half of this. */
+  function redactUrl(value) {
+    if (!value) return '<no url>';
+    let url;
+    try {
+      url = new URL(String(value), location.href);
+    } catch (err) {
+      // Not a URL at all: whatever it is came from the page, so do not print it.
+      return '<unparseable url>';
+    }
+
+    let out = url.origin && url.origin !== 'null' ? url.origin : `${url.protocol}//`;
+    out += url.pathname;
+    if (url.search) out += `?<${url.searchParams ? [...url.searchParams].length : 1} params>`;
+    if (url.hash) out += '#<fragment>';
+    return out;
+  }
+
   // Ordering against Tauri's own init scripts is not guaranteed, so wait for
   // the IPC internals rather than assuming they are already there.
   function whenReady(callback) {
@@ -167,7 +192,7 @@
 
   const nativeOpen = window.open;
   window.open = function (url) {
-    log('info', `window.open intercepted: ${url}`);
+    log('info', `window.open intercepted: ${redactUrl(url)}`);
     handOff(url);
     // Returning null makes some Google flows throw; hand back an inert stub.
     return {
@@ -207,7 +232,7 @@
 
       event.preventDefault();
       event.stopPropagation();
-      log('info', `link intercepted: ${anchor.href}`);
+      log('info', `link intercepted: ${redactUrl(anchor.href)}`);
       // Rust decides whether this opens in the system browser or navigates the
       // main window -- one source of truth for the allow-list.
       handOff(anchor.href);
@@ -576,7 +601,7 @@
         log(
           'info',
           `notification activated: id=${message.payload} source=${notification._source} ` +
-            `handlers=${handlers}${link ? ` link=${link}` : ''}`
+            `handlers=${handlers}${link ? ` link=${redactUrl(link)}` : ''}`
         );
 
         if (link) location.assign(link);
@@ -709,7 +734,7 @@
   }
 
   whenReady(() => {
-    log('info', `chat.js attached to ${location.href}`);
+    log('info', `chat.js attached to ${redactUrl(location.href)}`);
     listenForActivation();
     pollUnread();
     setInterval(pollUnread, POLL_MS);

@@ -217,9 +217,12 @@ fn untick_when_it_lapses(app: &AppHandle, epoch: u64) {
 }
 
 pub fn open_in_browser(app: &AppHandle, url: &str) {
-    log::info!("opening externally: {url}");
+    log::info!("opening externally: {}", crate::redact::url_str(url));
     if let Err(e) = app.opener().open_url(url, None::<&str>) {
-        log::error!("failed to open {url} externally: {e}");
+        log::error!(
+            "failed to open {} externally: {e}",
+            crate::redact::url_str(url)
+        );
     }
 }
 
@@ -236,7 +239,11 @@ pub fn navigation_guard(url: &url::Url) -> bool {
     // `about:blank` is routine (OAuth popups, form targets) and not worth
     // logging as a problem; anything else is worth seeing.
     if url.scheme() != "about" {
-        log::warn!("blocked navigation to scheme {}: {url}", url.scheme());
+        log::warn!(
+            "blocked navigation to scheme {}: {}",
+            url.scheme(),
+            crate::redact::url(url)
+        );
     }
     false
 }

@@ -3,6 +3,7 @@ mod config;
 mod features;
 mod icons;
 mod inject;
+mod redact;
 mod state;
 mod urls;
 

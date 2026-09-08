@@ -157,7 +157,7 @@ pub fn check_now(app: &AppHandle) {
 /// Blocking, so never call this on the main thread.
 fn check() -> Outcome {
     let url = crate::urls::releases_api();
-    log::debug!("updates: asking {url}");
+    log::debug!("updates: asking {}", crate::redact::url_str(&url));
 
     // The provider has to be named, not just compiled in: ureq defaults to
     // Rustls and *panics* mid-request when the default is not the feature that

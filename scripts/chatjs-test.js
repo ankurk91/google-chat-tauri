@@ -141,8 +141,18 @@ const anchor = (href, target) => ({ tagName: 'A', href, target, parentElement: n
 
 console.log('[1/7] boot');
 {
-  const { window, document, calls } = load();
-  check('reports itself once ready', calls.some((c) => c.command === 'page_log'));
+  const { window, document, calls } = load({ href: 'https://mail.google.com/chat/u/0/?hl=en#chat/dm/AAAA' });
+  const attached = calls.find((c) => c.command === 'page_log' && /attached to/.test(c.args.message));
+  check('reports itself once ready', !!attached);
+  // The log file is written to be attached to a public issue. The fragment
+  // names the conversation someone has open and the query can carry identity,
+  // so neither may reach it -- see redact.rs for the Rust half.
+  check(
+    'says where it attached without naming the conversation',
+    !!attached &&
+      attached.args.message === 'chat.js attached to https://mail.google.com/chat/u/0/?<1 params>#<fragment>',
+    attached && attached.args.message
+  );
   check('replaces window.Notification', typeof window.Notification === 'function');
   check('keeps the native window.open reachable', typeof window.open.__gchat_native === 'function');
   check('registers click and keydown listeners', !!document.listeners.click && !!document.listeners.keydown);
@@ -217,9 +227,23 @@ console.log('[4/7] click interception');
       stopPropagation: () => {}
     });
 
-  clickOn(anchor('https://example.test/away'));
-  check('sends a cross-origin link to Rust', calls.some((c) => c.command === 'open_external_url'));
+  clickOn(anchor('https://example.test/away?token=secret#place'));
+  const handedOff = calls.find((c) => c.command === 'open_external_url');
+  check('sends a cross-origin link to Rust', !!handedOff);
   check('swallows the click that it took', prevented === 1, `prevented ${prevented}`);
+
+  // Redaction is for the log only: Rust still gets the link someone clicked,
+  // or the hand-off would open the wrong page.
+  check(
+    'hands Rust the whole link',
+    !!handedOff && handedOff.args.url === 'https://example.test/away?token=secret#place'
+  );
+  const logged = calls.find((c) => c.command === 'page_log' && /link intercepted/.test(c.args.message));
+  check(
+    'but logs it with the query and fragment stripped',
+    !!logged && logged.args.message === 'link intercepted: https://example.test/away?<1 params>#<fragment>',
+    logged && logged.args.message
+  );
 
   const before = calls.filter((c) => c.command === 'open_external_url').length;
   clickOn(anchor('https://mail.google.com/chat/u/0/#chat/home'));

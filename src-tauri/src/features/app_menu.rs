@@ -321,7 +321,7 @@ pub fn handle(app: &AppHandle, id: &str) {
         "show-logs" => match app.path().app_log_dir() {
             Ok(dir) => {
                 if let Err(e) = tauri_plugin_opener::reveal_item_in_dir(&dir) {
-                    log::error!("failed to reveal {}: {e}", dir.display());
+                    log::error!("failed to reveal {}: {e}", crate::redact::path(&dir));
                 }
             }
             Err(e) => log::error!("no log directory: {e}"),

@@ -21,12 +21,16 @@ pub fn handle<R: Runtime>(webview: Webview<R>, event: tauri::webview::DownloadEv
 
             let name = file_name_for(destination, url.as_str());
             *destination = unique_path(&dir, &name);
-            log::info!("downloading {url} -> {}", destination.display());
+            log::info!(
+                "downloading {} -> {}",
+                crate::redact::url_str(url.as_str()),
+                crate::redact::path(destination)
+            );
         }
         tauri::webview::DownloadEvent::Finished { url, path, success } => match (success, path) {
-            (true, Some(p)) => log::info!("downloaded {}", p.display()),
-            (true, None) => log::info!("downloaded {url}"),
-            (false, _) => log::warn!("download failed: {url}"),
+            (true, Some(p)) => log::info!("downloaded {}", crate::redact::path(&p)),
+            (true, None) => log::info!("downloaded {}", crate::redact::url_str(url.as_str())),
+            (false, _) => log::warn!("download failed: {}", crate::redact::url_str(url.as_str())),
         },
         _ => {}
     }

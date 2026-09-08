@@ -33,14 +33,21 @@ pub fn check(window: &WebviewWindow, url: &url::Url) {
         // only loop, and a loop is worse than a dead end the user can click
         // their own way out of -- which they now can, because `chat.js` falls
         // back to navigating when the ACL rejects a hand-off.
-        log::warn!("sign-in: back at {url} after redirecting twice; leaving it alone");
+        log::warn!(
+            "sign-in: back at {} after redirecting twice; leaving it alone",
+            crate::redact::url(url)
+        );
         return;
     }
 
     let Ok(target) = crate::urls::sign_in_url().parse::<url::Url>() else {
         return;
     };
-    log::info!("sign-in: no session at {url}; redirecting to {target}");
+    log::info!(
+        "sign-in: no session at {}; redirecting to {}",
+        crate::redact::url(url),
+        crate::redact::url(&target)
+    );
 
     // From another thread on purpose. `navigate` runs inline when it is already
     // on the main thread, and this is called from inside the webview's own
