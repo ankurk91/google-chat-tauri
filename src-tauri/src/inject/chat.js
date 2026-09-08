@@ -80,7 +80,15 @@
     }
 
     let out = url.origin && url.origin !== 'null' ? url.origin : `${url.protocol}//`;
-    out += url.pathname;
+    // The path is dropped, not kept. Every URL this file logs came from the
+    // page -- a link someone clicked, the address the window is on, a link
+    // found in a notification payload -- so the path is content, not
+    // structure. A real log read `link intercepted:` followed by an employer,
+    // a private repository and a pull request number. Chat's own paths are no
+    // safer: `/room/<id>` names a conversation as plainly as the fragment
+    // does. `redact::foreign_url` in Rust is this same rule; `redact::url`,
+    // which keeps the path, is only for URLs the app itself built.
+    if (url.pathname && url.pathname !== '/') out += '/<path>';
     if (url.search) out += `?<${url.searchParams ? [...url.searchParams].length : 1} params>`;
     if (url.hash) out += '#<fragment>';
     return out;

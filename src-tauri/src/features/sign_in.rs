@@ -35,7 +35,7 @@ pub fn check(window: &WebviewWindow, url: &url::Url) {
         // back to navigating when the ACL rejects a hand-off.
         log::warn!(
             "sign-in: back at {} after redirecting twice; leaving it alone",
-            crate::redact::url(url)
+            crate::redact::foreign_url(url)
         );
         return;
     }
@@ -45,7 +45,7 @@ pub fn check(window: &WebviewWindow, url: &url::Url) {
     };
     log::info!(
         "sign-in: no session at {}; redirecting to {}",
-        crate::redact::url(url),
+        crate::redact::foreign_url(url),
         crate::redact::url(&target)
     );
 

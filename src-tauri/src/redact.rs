@@ -44,11 +44,41 @@ pub fn path(p: &Path) -> String {
     }
 }
 
-/// `scheme://host/path`, with the query and fragment reduced to a marker.
+/// A URL **this app built**, with the query and fragment reduced to a marker.
 ///
-/// The count is kept because "the link had five parameters" is sometimes the
-/// difference between two code paths, and a count names nobody.
+/// The path survives here because we wrote it: the releases endpoint and the
+/// sign-in target are `format!`ed from constants, so their paths describe our
+/// own code and name nobody. The count is kept because "the link had five
+/// parameters" is sometimes the difference between two code paths.
+///
+/// Do not reach for this for a URL that arrived from the page -- see
+/// `foreign_url`, which is the one that decides what a bug report may know
+/// about where somebody was and what they clicked.
 pub fn url(u: &url::Url) -> String {
+    render(u, true)
+}
+
+/// A URL **the page handed us**: the origin, and nothing after it.
+///
+/// A link clicked inside a chat, the address the window is sitting on, the
+/// target of a hand-off. The path there is not ours and is not structure -- it
+/// is content, and it is specific enough to identify the person and their
+/// employer in one line. A real log from a signed-in session read
+///
+/// ```text
+/// link intercepted: https://github.com/<org>/<private repo>/pull/1042
+/// ```
+///
+/// three times over, from the three modules that each log the hand-off.
+///
+/// The host stays, because the host is the whole of the decision: the
+/// allow-list in `urls` routes on it, so it is what a report about a link
+/// opening in the wrong place has to say. Everything past it is dropped.
+pub fn foreign_url(u: &url::Url) -> String {
+    render(u, false)
+}
+
+fn render(u: &url::Url, keep_path: bool) -> String {
     let mut out = String::new();
     out.push_str(u.scheme());
     out.push(':');
@@ -62,7 +92,14 @@ pub fn url(u: &url::Url) -> String {
         }
     }
 
-    out.push_str(u.path());
+    if keep_path {
+        out.push_str(u.path());
+    } else if u.path() != "/" && !u.path().is_empty() {
+        // Not silence: "there was a path" separates a link into a site from a
+        // link to its front page, which is the kind of thing a hand-off bug
+        // turns on.
+        out.push_str("/<path>");
+    }
 
     if let Some(query) = u.query() {
         let n = if query.is_empty() {
@@ -79,13 +116,21 @@ pub fn url(u: &url::Url) -> String {
     out
 }
 
-/// The same, for a URL that arrived as text and may not parse.
+/// `url`, for one of ours that arrived as text and may not parse.
 ///
-/// An unparseable string is not printed: it came from the page or the webview,
-/// so there is no telling what is in it.
+/// An unparseable string is not printed: there is no telling what is in it.
 pub fn url_str(s: &str) -> String {
     match url::Url::parse(s) {
         Ok(u) => url(&u),
+        Err(_) => "<unparseable url>".to_owned(),
+    }
+}
+
+/// `foreign_url`, for one that arrived as text -- which is how every URL from
+/// the page arrives.
+pub fn foreign_url_str(s: &str) -> String {
+    match url::Url::parse(s) {
+        Ok(u) => foreign_url(&u),
         Err(_) => "<unparseable url>".to_owned(),
     }
 }
@@ -189,19 +234,45 @@ mod tests {
     fn credentials_and_fragments_do_not_survive() {
         let u = url::Url::parse("https://jane:hunter2@example.com:8443/a/b#token=x").unwrap();
         assert_eq!(url(&u), "https://example.com:8443/a/b#<fragment>");
+        assert_eq!(
+            foreign_url(&u),
+            "https://example.com:8443/<path>#<fragment>"
+        );
     }
 
     #[test]
-    fn a_plain_url_is_left_alone() {
+    fn one_of_ours_keeps_the_path_that_we_wrote() {
         // The common case has to stay readable, or the log stops being worth
-        // reading.
-        let u = url::Url::parse("https://mail.google.com/chat/u/0").unwrap();
-        assert_eq!(url(&u), "https://mail.google.com/chat/u/0");
+        // reading -- and this path came out of a format! over constants.
+        let u = url::Url::parse("https://api.github.com/repos/o/r/releases").unwrap();
+        assert_eq!(url(&u), "https://api.github.com/repos/o/r/releases");
+    }
+
+    #[test]
+    fn a_link_from_the_page_keeps_only_its_host() {
+        // Measured, not hypothetical: this is the shape of the line that named
+        // an employer, a private repository and a pull request in a log meant
+        // for a public issue.
+        let u = url::Url::parse("https://github.com/acme-corp/secret-api/pull/1042").unwrap();
+        assert_eq!(foreign_url(&u), "https://github.com/<path>");
+
+        // Chat's own paths are no safer than anyone else's.
+        let room = url::Url::parse("https://chat.google.com/room/AAAAmZ2f").unwrap();
+        assert_eq!(foreign_url(&room), "https://chat.google.com/<path>");
+    }
+
+    #[test]
+    fn a_front_page_is_distinguishable_from_a_deep_link() {
+        // Which of the two it was is the kind of thing a hand-off bug turns on.
+        let root = url::Url::parse("https://example.com/").unwrap();
+        assert_eq!(foreign_url(&root), "https://example.com");
     }
 
     #[test]
     fn unparseable_text_is_not_printed() {
         assert_eq!(url_str("mail.google.com/chat"), "<unparseable url>");
+        assert_eq!(foreign_url_str("mail.google.com/chat"), "<unparseable url>");
         assert_eq!(url_str("https://x/y"), "https://x/y");
+        assert_eq!(foreign_url_str("https://x/y"), "https://x/<path>");
     }
 }

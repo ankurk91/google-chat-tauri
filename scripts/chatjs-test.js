@@ -150,7 +150,7 @@ console.log('[1/7] boot');
   check(
     'says where it attached without naming the conversation',
     !!attached &&
-      attached.args.message === 'chat.js attached to https://mail.google.com/chat/u/0/?<1 params>#<fragment>',
+      attached.args.message === 'chat.js attached to https://mail.google.com/<path>?<1 params>#<fragment>',
     attached && attached.args.message
   );
   check('replaces window.Notification', typeof window.Notification === 'function');
@@ -240,8 +240,8 @@ console.log('[4/7] click interception');
   );
   const logged = calls.find((c) => c.command === 'page_log' && /link intercepted/.test(c.args.message));
   check(
-    'but logs it with the query and fragment stripped',
-    !!logged && logged.args.message === 'link intercepted: https://example.test/away?<1 params>#<fragment>',
+    'but logs only the host it went to',
+    !!logged && logged.args.message === 'link intercepted: https://example.test/<path>?<1 params>#<fragment>',
     logged && logged.args.message
   );
 

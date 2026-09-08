@@ -142,9 +142,15 @@ redactor to go through:
 - **Paths**, because every one of ours starts at the home directory — `/home/jane`, or `C:\Users\Jane Smith`. Print
   them with `redact::path`, which folds the home directory to `~` and reduces anything outside it to `.../name`.
 - **URLs**, because Google puts the signed-in address in the query (`Email`, `identifier`, `authuser`), an attachment
-  link carries a bearer token there, and the fragment on a Chat URL names the open conversation. Print them with
-  `redact::url` (or `redact::url_str`), which keeps the scheme, host and path and replaces the query with a count of
-  its parameters. `chat.js` has the same function as `redactUrl` for the lines it sends over `page_log`.
+  link carries a bearer token there, and the fragment on a Chat URL names the open conversation. Which redactor to use
+  depends on **who built the URL**:
+  - `redact::url` for one of ours — the releases endpoint, the sign-in target. Those paths are `format!`ed from
+    constants, so they describe our own code and name nobody. The path survives; the query becomes a count.
+  - `redact::foreign_url` for anything that came from the page — a clicked link, the address the window is on, a
+    download. There the path is content, not structure, and only the host survives. The host is kept because the
+    allow-list in `urls` routes on it, so it is the part a hand-off bug needs.
+
+  `chat.js` logs nothing but page-supplied URLs, so its `redactUrl` is the `foreign_url` rule.
 
 Message bodies and sender names never reach Rust: `commands::show_notification` hands the title and body to the OS
 without logging either, and `chat.js` reports a notification's payload only where it looks like an id.

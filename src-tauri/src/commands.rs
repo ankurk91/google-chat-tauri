@@ -49,7 +49,7 @@ pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
         return Err("main window is gone".into());
     };
 
-    log::debug!("link request: {}", crate::redact::url(&parsed));
+    log::debug!("link request: {}", crate::redact::foreign_url(&parsed));
 
     // Preferences > Open Every Link in This Window suspends the allow-list for
     // five minutes, so an external identity provider can finish a sign-in here
