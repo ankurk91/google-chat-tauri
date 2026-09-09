@@ -80,6 +80,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 // The page can block a graceful quit via onbeforeunload, so mark
                 // our intent first and exit rather than asking the window nicely.
                 app.state::<AppState>().set_quitting();
+                crate::config::flush(app);
                 app.exit(0);
             }
             _ => {}

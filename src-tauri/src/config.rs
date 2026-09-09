@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -43,11 +44,35 @@ impl Default for Prefs {
 
 /// Loaded once at startup and kept in Tauri's state.
 #[derive(Default)]
-pub struct Config(Mutex<Prefs>);
+pub struct Config(Mutex<Inner>);
+
+/// The most often the file is allowed to be written, however fast the
+/// preferences change. A burst is held in memory and lands as one write.
+///
+/// The cost is a window in which a change is only in memory: kill the process
+/// inside it and that change is gone. Accepted deliberately -- the settings
+/// this covers are cheap to redo, and the quit paths call [`flush`] anyway, so
+/// the window is really only open for a crash or a `kill -9`.
+const WRITE_EVERY: Duration = Duration::from_secs(1);
+
+#[derive(Default)]
+struct Inner {
+    prefs: Prefs,
+    /// The JSON last written to the file, so an update that leaves the
+    /// serialised form untouched does not write it again. `None` until this
+    /// process has written once -- `load` does not fill it in, so the first
+    /// save of a session always goes through.
+    written: Option<String>,
+    /// When that write happened, for the throttle above.
+    last_write: Option<Instant>,
+    /// Whether a thread is already waiting to write what is in memory, so a
+    /// burst schedules one writer rather than one per change.
+    flush_scheduled: bool,
+}
 
 impl Config {
     pub fn get(&self) -> Prefs {
-        self.0.lock().unwrap().clone()
+        self.0.lock().unwrap().prefs.clone()
     }
 
     /// Change the preferences in memory and nowhere else.
@@ -56,8 +81,8 @@ impl Config {
     /// wants `update_and_save`, which cannot lose the change it just made.
     pub fn update(&self, f: impl FnOnce(&mut Prefs)) -> Prefs {
         let mut g = self.0.lock().unwrap();
-        f(&mut g);
-        g.clone()
+        f(&mut g.prefs);
+        g.prefs.clone()
     }
 }
 
@@ -72,15 +97,80 @@ impl Config {
 ///
 /// Holding the lock across the write closes both: what reaches the file is what
 /// was just set, and only one write is ever in flight.
+///
+/// A change that serialises to what is already on disk writes nothing.
+/// Measured before that was true: 200 page-driven zoom-ins against a zoom
+/// already at the clamp wrote this file 200 times, byte for byte identical, at
+/// around 180 writes a second -- on the thread that also draws the window's own
+/// titlebar buttons. The page can reach `set_zoom` through `menu_action`, so
+/// there was no ceiling on it.
+///
+/// On top of that the preferences are kept in memory and reach the file at most
+/// once every [`WRITE_EVERY`]; a change inside that window schedules one writer
+/// to carry whatever the value has settled on by then.
 pub fn update_and_save(app: &AppHandle, f: impl FnOnce(&mut Prefs)) -> Prefs {
     let config = app.state::<Config>();
     let mut guard = config.0.lock().unwrap();
 
-    f(&mut guard);
-    let prefs = guard.clone();
-    write(app, &prefs);
+    f(&mut guard.prefs);
+    let prefs = guard.prefs.clone();
+
+    let Some(since) = guard.last_write.map(|at| at.elapsed()) else {
+        // Nothing written yet this session, so there is nothing to throttle.
+        flush_locked(app, &mut guard);
+        return prefs;
+    };
+
+    if since >= WRITE_EVERY {
+        flush_locked(app, &mut guard);
+    } else if !guard.flush_scheduled {
+        guard.flush_scheduled = true;
+
+        let wait = WRITE_EVERY - since;
+        let app = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(wait);
+
+            let config = app.state::<Config>();
+            let mut guard = config.0.lock().unwrap();
+            guard.flush_scheduled = false;
+            flush_locked(&app, &mut guard);
+        });
+    }
 
     prefs
+}
+
+/// Write what is in memory, if it is not already on disk. Caller holds the lock.
+fn flush_locked(app: &AppHandle, inner: &mut Inner) {
+    let json = match serde_json::to_string_pretty(&inner.prefs) {
+        Ok(json) => json,
+        Err(e) => {
+            log::error!("config: failed to serialise: {e}");
+            return;
+        }
+    };
+
+    if inner.written.as_deref() == Some(json.as_str()) {
+        return;
+    }
+
+    // Only remembered once it is really on disk, so a failed write is attempted
+    // again rather than assumed.
+    if write(app, &json) {
+        inner.written = Some(json);
+        inner.last_write = Some(Instant::now());
+    }
+}
+
+/// Write anything the throttle is still holding.
+///
+/// Called on the way out, so quitting never costs the setting the user changed
+/// a moment before.
+pub fn flush(app: &AppHandle) {
+    let config = app.state::<Config>();
+    let mut guard = config.0.lock().unwrap();
+    flush_locked(app, &mut guard);
 }
 
 fn path(app: &AppHandle) -> Option<PathBuf> {
@@ -110,23 +200,21 @@ pub fn load(app: &AppHandle) -> Prefs {
 }
 
 /// Only ever called from `update_and_save`, which holds the lock.
-fn write(app: &AppHandle, prefs: &Prefs) {
-    let Some(p) = path(app) else { return };
+///
+/// Returns whether the file now holds `json`.
+fn write(app: &AppHandle, json: &str) -> bool {
+    let Some(p) = path(app) else { return false };
 
     if let Some(dir) = p.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
 
-    let json = match serde_json::to_string_pretty(prefs) {
-        Ok(json) => json,
+    match write_to(&p, json) {
+        Ok(()) => true,
         Err(e) => {
-            log::error!("config: failed to serialise: {e}");
-            return;
+            log::error!("config: failed to write {}: {e}", crate::redact::path(&p));
+            false
         }
-    };
-
-    if let Err(e) = write_to(&p, &json) {
-        log::error!("config: failed to write {}: {e}", crate::redact::path(&p));
     }
 }
 

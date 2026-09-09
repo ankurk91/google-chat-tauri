@@ -9,6 +9,10 @@
 //! must work reliably from inside the page -- Ctrl+F search being the one that
 //! matters -- is handled in `chat.js` instead.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::Duration;
+
 use tauri::menu::{
     AboutMetadata, CheckMenuItem, CheckMenuItemBuilder, Menu, MenuItemBuilder, SubmenuBuilder,
 };
@@ -225,6 +229,8 @@ pub fn handle(app: &AppHandle, id: &str) {
     // gone; everything else needs one, so look it up lazily.
     if id == "quit" {
         app.state::<AppState>().set_quitting();
+        // The write throttle may still be holding a change; take it now.
+        config::flush(app);
         app.exit(0);
         return;
     }
@@ -335,13 +341,87 @@ pub fn handle(app: &AppHandle, id: &str) {
 }
 
 /// Apply a zoom change, clamp it, and remember it.
+///
+/// Asking for a level the window is already at does nothing at all. At the
+/// clamp -- Ctrl+= held down, or a page calling `menu_action` in a loop -- every
+/// press used to cost a webview call and a config write for a value that could
+/// not move. `config::update_and_save` declines the write on its own; this
+/// declines the webview call, which is the more expensive half.
 pub fn set_zoom(app: &AppHandle, f: impl FnOnce(f64) -> f64) {
+    let mut moved = false;
+
+    // Computed inside the update so the read and the write of `zoom` are the
+    // one locked section, rather than a read, a decision, and a later write.
     let prefs = config::update_and_save(app, |p| {
         // Round to avoid float drift accumulating across many steps.
-        p.zoom = (f(p.zoom).clamp(ZOOM_MIN, ZOOM_MAX) * 100.0).round() / 100.0;
+        let after = (f(p.zoom).clamp(ZOOM_MIN, ZOOM_MAX) * 100.0).round() / 100.0;
+        moved = after != p.zoom;
+        p.zoom = after;
     });
 
+    if !moved {
+        return;
+    }
+
+    apply_soon(app, prefs.zoom);
+}
+
+/// How long the requests must stop before the webview is asked for a level.
+///
+/// Short enough to read as immediate on a single press, long enough that a held
+/// key or a loop collapses into one relayout.
+const ZOOM_SETTLE: Duration = Duration::from_millis(120);
+
+/// The level the webview should end up at, and whether anyone is on the way to
+/// deliver it.
+static PENDING_ZOOM: Mutex<Option<f64>> = Mutex::new(None);
+static DELIVERY_SCHEDULED: AtomicBool = AtomicBool::new(false);
+
+/// Hand the level to the webview once the requests stop.
+///
+/// Storing a zoom level is free; applying it is a full relayout of Chat's page,
+/// and that is the expensive half by a wide margin -- measured at 168 ms for a
+/// single step, and degrading to 1495 ms each when the level was moved 200
+/// times in a row. Applied synchronously, that let a page hold the main thread
+/// -- the one that also draws the window's titlebar buttons -- for four minutes
+/// with 200 calls through `menu_action`.
+///
+/// A rate limit would not have helped: those calls were already 1.2 s apart,
+/// because each was waiting for the relayout it had just asked for. The fix is
+/// not to slow the requests down but to stop doing the work once per request,
+/// so a burst of any size costs one relayout with the level it ended on.
+///
+/// One thread at a time, not one per request. `set_zoom` off the main thread
+/// goes through the event loop, the same route `features::connectivity` uses
+/// for `navigate`.
+fn apply_soon(app: &AppHandle, zoom: f64) {
+    *PENDING_ZOOM.lock().unwrap() = Some(zoom);
+
+    // Somebody is already sleeping on this and will pick up the value above.
+    if DELIVERY_SCHEDULED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    let app = app.clone();
+    std::thread::spawn(move || {
+        // Leading edge first: a press after a quiet spell is applied at once,
+        // so a single Ctrl+= is as immediate as it was before any of this.
+        // Only a second press arriving inside the window below waits.
+        deliver(&app);
+
+        std::thread::sleep(ZOOM_SETTLE);
+        DELIVERY_SCHEDULED.store(false, Ordering::SeqCst);
+
+        // Whatever arrived while that was in flight, at the level it ended on.
+        deliver(&app);
+    });
+}
+
+fn deliver(app: &AppHandle) {
+    let Some(zoom) = PENDING_ZOOM.lock().unwrap().take() else {
+        return;
+    };
     if let Some(window) = app.get_webview_window(MAIN) {
-        let _ = window.set_zoom(prefs.zoom);
+        let _ = window.set_zoom(zoom);
     }
 }
