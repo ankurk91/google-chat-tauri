@@ -123,22 +123,22 @@ fn new_issue_url(body: &str) -> String {
     format!(
         "{}/issues/new?body={}",
         env!("CARGO_PKG_REPOSITORY"),
-        urlencoding_lite(body)
+        percent_encoding::utf8_percent_encode(body, ISSUE_BODY)
     )
 }
 
-/// Minimal percent-encoding for the query string above. Not a general-purpose
-/// encoder -- it only has to survive our own fixed template.
-fn urlencoding_lite(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
-}
+/// Everything but the unreserved set of RFC 3986, which is what a query value
+/// may carry literally.
+///
+/// Spelled out rather than using `NON_ALPHANUMERIC`, which also encodes
+/// `-` `_` `.` `~`. Those are safe as they stand and the body is full of them --
+/// every fact is a `- ` list item -- so encoding them would cost three
+/// characters each against the 2000 this URL has to fit in.
+const ISSUE_BODY: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
 
 /// Google's sign-in hosts, across every country domain.
 ///
