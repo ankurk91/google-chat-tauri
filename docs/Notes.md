@@ -163,6 +163,29 @@ later, and one of these was wrong for exactly that reason.
 
   The desktop id is derived by Tauri from `productName`, so it matches the entry the deb installs only as long as the
   two agree — rename one without the other and the badge quietly stops.
+- **Emitting the LauncherEntry signal ourselves is not a way round that.** The obvious workaround — skip tao and
+  `libunity` and put `com.canonical.Unity.LauncherEntry.Update` on the session bus directly — fails, because on Cinnamon
+  nothing is listening for it. Measured on Mint 22.3 / Cinnamon / X11 on 2026-09-09, with the app running and the
+  signal sent by hand:
+
+  ```
+  gdbus emit --session --object-path /com/canonical/Unity/LauncherEntry \
+    --signal com.canonical.Unity.LauncherEntry.Update \
+    "application://Google Chat.desktop" "{'count': <int64 42>, 'count-visible': <true>}"
+  ```
+
+  The dock did not change. The signal was not the problem: `dbus-monitor` caught it on the bus intact — right path,
+  right interface, `count` 42 — and the desktop id matched the installed `Google Chat.desktop`, whose
+  `StartupWMClass=google-chat-tauri` matches the window's own `WM_CLASS`. So the protocol is simply unimplemented in
+  Cinnamon's panel, which is the dock here; Plank, Docky and Cairo-Dock do implement it, and none of them was running.
+  Nothing owned `com.canonical.Unity` and `libunity` was not installed or mapped into the process, exactly as the entry
+  above predicts.
+- **A count on the Cinnamon dock icon is notifications, not unread messages.** It counts popups that have not been
+  dismissed, so it tracks the notification tray and nothing else. Worth knowing because it looks precisely like the
+  badge working — the number appeared during a notification burst and read 18, which was the number of popups still on
+  screen. It cannot be borrowed as an unread indicator either: holding *N* notifications open to mean *N* unreads is
+  the waiter-thread cost in `features::notifications` by design, and dismissing any one of them would make the number
+  wrong.
 - **The Linux tray delivers no click events at all.** `tray-icon`'s GTK backend emits none, so the tray menu is the only
   way in. Windows toggles on click.
 - **A minimised window cannot be deiconified on Cinnamon.** `unminimize()` reaches `gtk_window_deiconify` and the window
