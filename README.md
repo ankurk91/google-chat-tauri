@@ -52,7 +52,7 @@ longer maintained, was 66 MB.
 - **A way back from a wedged session** — **Help → Reset App Data** signs you out, returns every preference to its
   default and restarts the app clean. **Show Logs** and **Report an Issue** are next to it.
 
-The app does not collect analytics and does not update itself. It does ask GitHub once a day or so whether a newer
+The app does not collect analytics and does not update itself. It does ask GitHub twice a day whether a newer
 release exists, and tells you if there is one — you download and install it yourself. That can be turned off in
 **Preferences**.
 
@@ -94,9 +94,9 @@ The leading `./` matters — without a path, `apt` looks for a package by that n
 way pulls in the dependencies (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1` and OpenSSL) in the
 same step; they come from your distribution and are usually installed already.
 
-Then launch **Google Chat** from your applications' menu.
+Then launch **Google Chat** from your applications menu.
 
-**Uninstall.**:
+**Uninstall.**
 
 ```bash
 sudo apt purge google-chat

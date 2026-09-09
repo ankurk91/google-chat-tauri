@@ -81,7 +81,7 @@ loads Chat as soon as the connection is there.
 
 **Sign-in goes through your company's own login page (Okta, Entra ID, Ping).** Those hosts are not on the short list
 the app keeps in its own window, so a link out to one would open in your browser and finish the sign-in there instead.
-Turn on **Preferences → Open Every Link in This Window** first: for the next five minutes every link stays in the app,
+Turn on **Preferences → Temporarily Open Every Link in This Window** first: for the next five minutes every link stays in the app,
 which is long enough to get through the flow. It switches itself back off, and you can untick it as soon as you are
 signed in.
 

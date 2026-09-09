@@ -73,9 +73,9 @@ The Python harnesses observe X11 only — see [Notes.md](Notes.md) for what that
 
 ### What CI checks
 
-`ci.yml` runs on a push to `main` touching `src-tauri/`, `scripts/` or `package.json` — and `release.yml` calls it as
-the `checks` job that its `build` needs, so these five decide whether a release happens at all. They are the whole gate;
-run them before pushing a tag:
+`ci.yml` runs on a push to `main` touching `src-tauri/`, `scripts/`, `package.json`, `pnpm-lock.yaml` or `ci.yml`
+itself — and `release.yml` calls it as the `checks` job that its `build` needs, so these five decide whether a release
+happens at all. They are the whole gate; run them before pushing a tag:
 
 ```bash
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
