@@ -203,7 +203,13 @@ fn deliver(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
         builder.body(body);
     }
 
-    if !actions_enabled() {
+    // Claimed before the action is registered, and released when the waiter
+    // below finishes. Past the cap the notification still appears, it just is
+    // not clickable -- which costs little, because a click here only raises the
+    // window (Chat gives us nothing to navigate to; see `docs/Notes.md`).
+    let waiting = actions_enabled() && claim_waiter();
+
+    if !waiting {
         match builder.show() {
             // Logged on success as well as failure: the absence of an error is
             // also what a notification nobody ever attempted looks like, which
@@ -220,6 +226,7 @@ fn deliver(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
     let handle = match builder.show() {
         Ok(h) => h,
         Err(e) => {
+            release_waiter();
             log::error!("notification: failed to show notification: {e}");
             return;
         }
@@ -244,11 +251,58 @@ fn deliver(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
                     activated(&app, id);
                 }
             });
+            // Returns once the notification is clicked, dismissed or expired.
+            release_waiter();
         });
 
     if let Err(e) = waiter {
+        release_waiter();
         log::error!("notification: no thread to wait for a click on id={id}: {e}");
     }
+}
+
+/// How many notifications may be waiting on a click at once.
+///
+/// Each one costs a blocked thread *and* a D-Bus connection of its own, and
+/// neither is released until the notification is clicked, dismissed or expired
+/// -- so the cost tracks what is sitting unread on the desktop, not what has
+/// been delivered. Measured with a burst of 60 while none were dismissed:
+/// threads went 44 -> 85, settling at 81 with 18 popups still on screen, made
+/// up of 18 `notif-wait` and 19 `zbus::Connection` threads. Everything drained
+/// the moment the tray was cleared, so this is not a leak; it is an unbounded
+/// cost for being away from the desk while a channel is busy.
+///
+/// Sixteen is chosen for the shape of the loss rather than the number: past it
+/// a notification is still shown, and all that goes is click-to-raise on the
+/// oldest ones -- which on Linux only raises the window anyway.
+#[cfg(target_os = "linux")]
+const MAX_WAITERS: usize = 16;
+
+#[cfg(target_os = "linux")]
+static WAITERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Take a waiter slot, or report that they are all taken.
+#[cfg(target_os = "linux")]
+fn claim_waiter() -> bool {
+    use std::sync::atomic::Ordering;
+
+    let claimed = WAITERS
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+            (n < MAX_WAITERS).then_some(n + 1)
+        })
+        .is_ok();
+
+    if !claimed {
+        log::debug!("notification: {MAX_WAITERS} clicks already pending; showing without one");
+    }
+    claimed
+}
+
+#[cfg(target_os = "linux")]
+fn release_waiter() {
+    use std::sync::atomic::Ordering;
+
+    WAITERS.fetch_sub(1, Ordering::SeqCst);
 }
 
 /// Whether to register a clickable "default" action on Linux notifications.
@@ -285,5 +339,35 @@ fn show_via_plugin(app: &AppHandle, title: &str, body: Option<&str>) {
 
     if let Err(e) = builder.show() {
         log::error!("notification: failed to show notification: {e}");
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn the_waiter_cap_holds_and_releases() {
+        // The only test touching WAITERS, and it puts the counter back.
+        for slot in 0..MAX_WAITERS {
+            assert!(claim_waiter(), "slot {slot} should still be free");
+        }
+        assert!(!claim_waiter(), "the cap must hold at {MAX_WAITERS}");
+
+        // A notification being dismissed frees exactly one slot, so a busy
+        // desktop recovers click-through as the user works through the tray.
+        release_waiter();
+        assert!(claim_waiter(), "a dismissal frees a slot");
+        assert!(!claim_waiter(), "and only one");
+
+        for _ in 0..MAX_WAITERS {
+            release_waiter();
+        }
+        assert_eq!(
+            WAITERS.load(Ordering::SeqCst),
+            0,
+            "slots must all come back"
+        );
     }
 }
