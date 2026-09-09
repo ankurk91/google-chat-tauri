@@ -196,7 +196,19 @@ pub fn is_signed_out_landing(url: &url::Url) -> bool {
 }
 
 /// Attachment downloads. The electron app handed these to the system browser.
-const ATTACHMENT_URL: &str = "https://chat.google.com/u/0/api/get_attachment_url";
+///
+/// The path only, matched against the path: the whole URL used to be looked for
+/// as a substring of the whole URL, which said yes to any Chat link merely
+/// carrying that text in its query and sent a perfectly ordinary page to the
+/// browser. It also hard-coded `/u/0/`, so the same endpoint under a second
+/// signed-in account -- `/u/1/`, `/u/2/` -- was not recognised at all and the
+/// download opened in this window.
+const ATTACHMENT_PATH: &str = "/api/get_attachment_url";
+
+/// Is this the attachment endpoint, under whichever account slot?
+fn is_attachment(url: &url::Url) -> bool {
+    url.host_str() == Some("chat.google.com") && url.path().ends_with(ATTACHMENT_PATH)
+}
 
 /// Is this URL part of the Chat app itself, rather than something Chat merely
 /// links to?
@@ -212,7 +224,7 @@ fn is_in_app(url: &url::Url) -> bool {
 
     // Attachments are a download, not a page, even though they live on the
     // Chat host.
-    if url.as_str().contains(ATTACHMENT_URL) {
+    if is_attachment(url) {
         return false;
     }
 
@@ -301,6 +313,29 @@ mod tests {
     fn attachments_go_to_the_browser() {
         assert!(external(
             "https://chat.google.com/u/0/api/get_attachment_url?url_type=DOWNLOAD_URL"
+        ));
+    }
+
+    #[test]
+    fn attachments_under_a_second_account_go_there_too() {
+        // The slot is the signed-in account, and it is not always 0. Matching
+        // the whole URL against a `/u/0/` literal missed every other one.
+        for slot in ["u/1", "u/2", "u/17"] {
+            let url = format!("https://chat.google.com/{slot}/api/get_attachment_url?x=1");
+            assert!(external(&url), "{url} should open externally");
+        }
+    }
+
+    #[test]
+    fn an_ordinary_chat_link_is_not_an_attachment() {
+        // The endpoint used to be looked for anywhere in the URL, so a link
+        // that merely mentioned it -- in a query parameter, say -- was shipped
+        // off to the browser instead of opening in the app.
+        assert!(!external(
+            "https://chat.google.com/room/AAAA?continue=/u/0/api/get_attachment_url"
+        ));
+        assert!(!external(
+            "https://chat.google.com/u/0/api/get_attachment_urls"
         ));
     }
 
