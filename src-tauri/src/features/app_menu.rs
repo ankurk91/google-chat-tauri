@@ -9,8 +9,8 @@
 //! must work reliably from inside the page -- Ctrl+F search being the one that
 //! matters -- is handled in `chat.js` instead.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tauri::menu::{
@@ -212,10 +212,10 @@ pub fn nested_check_item<R: Runtime>(app: &AppHandle<R>, id: &str) -> Option<Che
             continue;
         };
         for item in submenu.items().ok()? {
-            if let Some(check) = item.as_check_menuitem() {
-                if check.id() == id {
-                    return Some(check.clone());
-                }
+            if let Some(check) = item.as_check_menuitem()
+                && check.id() == id
+            {
+                return Some(check.clone());
             }
         }
     }
@@ -312,10 +312,10 @@ pub fn handle(app: &AppHandle, id: &str) {
 
         "copy-url" => {
             use tauri_plugin_clipboard_manager::ClipboardExt;
-            if let Ok(url) = window.url() {
-                if let Err(e) = app.clipboard().write_text(url.to_string()) {
-                    log::error!("failed to copy url: {e}");
-                }
+            if let Ok(url) = window.url()
+                && let Err(e) = app.clipboard().write_text(url.to_string())
+            {
+                log::error!("failed to copy url: {e}");
             }
         }
         "show-logs" => match app.path().app_log_dir() {

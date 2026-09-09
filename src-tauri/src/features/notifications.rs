@@ -143,7 +143,7 @@ struct Job {
 /// serialising on the main thread used to give for free.
 #[cfg(target_os = "linux")]
 fn show_linux(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
-    use std::sync::{mpsc, Mutex, OnceLock};
+    use std::sync::{Mutex, OnceLock, mpsc};
 
     static QUEUE: OnceLock<Mutex<mpsc::Sender<Job>>> = OnceLock::new();
 

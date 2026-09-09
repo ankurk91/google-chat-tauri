@@ -15,10 +15,10 @@ const FIREFOX_MAJOR: &str = "155";
 
 pub fn spoofed() -> String {
     // Escape hatch for debugging Google sign-in problems without a rebuild.
-    if let Ok(custom) = std::env::var("GOOGLE_CHAT_UA") {
-        if !custom.trim().is_empty() {
-            return custom;
-        }
+    if let Ok(custom) = std::env::var("GOOGLE_CHAT_UA")
+        && !custom.trim().is_empty()
+    {
+        return custom;
     }
 
     let platform = if cfg!(target_os = "windows") {

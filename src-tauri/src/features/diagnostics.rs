@@ -101,13 +101,13 @@ pub fn log_startup(app: &AppHandle, prefs: &Prefs, launched_hidden: bool) {
 fn os_detail() -> Option<String> {
     let mut parts = Vec::new();
 
-    if let Ok(release) = std::fs::read_to_string("/etc/os-release") {
-        if let Some(name) = release.lines().find_map(|line| {
+    if let Ok(release) = std::fs::read_to_string("/etc/os-release")
+        && let Some(name) = release.lines().find_map(|line| {
             line.strip_prefix("PRETTY_NAME=")
                 .map(|v| v.trim_matches('"').to_string())
-        }) {
-            parts.push(name);
-        }
+        })
+    {
+        parts.push(name);
     }
 
     if let Ok(kernel) = std::fs::read_to_string("/proc/sys/kernel/osrelease") {

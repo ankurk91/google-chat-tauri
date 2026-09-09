@@ -37,8 +37,11 @@ use webview2_com::Microsoft::Web::WebView2::Win32::{
 // in the tree via Tauri and would do this too, but naming it here would pin a
 // second crate to whatever version Tauri happens to resolve. `GetKeyState` is
 // as stable as Win32 gets, and user32 is already linked by tao.
+// `unsafe extern`, not bare `extern`: edition 2024 makes an extern block
+// unsafe to declare, because nothing checks that the signature matches the
+// library. This is the only such block in the tree.
 #[link(name = "user32")]
-extern "system" {
+unsafe extern "system" {
     fn GetKeyState(vk: i32) -> i16;
 }
 

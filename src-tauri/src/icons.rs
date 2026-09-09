@@ -58,11 +58,7 @@ const SMALL: bool = cfg!(target_os = "macos");
 
 /// The icon shown before `chat.js` has reported in.
 pub fn initial() -> &'static [u8] {
-    if SMALL {
-        OFFLINE_16
-    } else {
-        OFFLINE_32
-    }
+    if SMALL { OFFLINE_16 } else { OFFLINE_32 }
 }
 
 /// Tray artwork for the current state.
