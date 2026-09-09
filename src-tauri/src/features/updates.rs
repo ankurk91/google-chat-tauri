@@ -96,10 +96,7 @@ fn automatic_check(app: &AppHandle) {
                 return;
             }
 
-            let prefs = app
-                .state::<Config>()
-                .update(|prefs| prefs.offered_version = version.clone());
-            config::save(app, &prefs);
+            config::update_and_save(app, |prefs| prefs.offered_version = version.clone());
 
             offer(app, &version, &url);
         }
@@ -123,10 +120,7 @@ pub fn check_now(app: &AppHandle) {
 
         match outcome {
             Outcome::Available { version, url } => {
-                let prefs = app
-                    .state::<Config>()
-                    .update(|prefs| prefs.offered_version = version.clone());
-                config::save(&app, &prefs);
+                config::update_and_save(&app, |prefs| prefs.offered_version = version.clone());
 
                 offer(&app, &version, &url);
             }

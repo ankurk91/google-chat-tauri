@@ -290,10 +290,7 @@ pub fn handle(app: &AppHandle, id: &str) {
         "check-updates" => crate::features::updates::check_now(app),
 
         "pref-check-updates" => {
-            let prefs = app
-                .state::<Config>()
-                .update(|p| p.check_updates = !p.check_updates);
-            config::save(app, &prefs);
+            let prefs = config::update_and_save(app, |p| p.check_updates = !p.check_updates);
             log::info!(
                 "updates: automatic checks {}",
                 if prefs.check_updates { "on" } else { "off" }
@@ -304,10 +301,7 @@ pub fn handle(app: &AppHandle, id: &str) {
         }
 
         "pref-start-hidden" => {
-            let prefs = app
-                .state::<Config>()
-                .update(|p| p.start_hidden = !p.start_hidden);
-            config::save(app, &prefs);
+            config::update_and_save(app, |p| p.start_hidden = !p.start_hidden);
         }
 
         "copy-url" => {
@@ -342,7 +336,7 @@ pub fn handle(app: &AppHandle, id: &str) {
 
 /// Apply a zoom change, clamp it, and remember it.
 pub fn set_zoom(app: &AppHandle, f: impl FnOnce(f64) -> f64) {
-    let prefs = app.state::<Config>().update(|p| {
+    let prefs = config::update_and_save(app, |p| {
         // Round to avoid float drift accumulating across many steps.
         p.zoom = (f(p.zoom).clamp(ZOOM_MIN, ZOOM_MAX) * 100.0).round() / 100.0;
     });
@@ -350,5 +344,4 @@ pub fn set_zoom(app: &AppHandle, f: impl FnOnce(f64) -> f64) {
     if let Some(window) = app.get_webview_window(MAIN) {
         let _ = window.set_zoom(prefs.zoom);
     }
-    config::save(app, &prefs);
 }
