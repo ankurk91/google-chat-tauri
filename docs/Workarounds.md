@@ -61,6 +61,28 @@ Chat does not render its navigation while the window is hidden, so the elements 
 absent and the count reads zero — precisely when the tray is the only thing the user can see. The favicon is driven by
 data rather than layout, and Google publishes matching `..._no_dot_` and `..._dot_` variants to swap between.
 
+That is also why the poller **must not be gated on page visibility**, which is the first thing it looks like it wants:
+a `querySelector` every second, most of them while nobody is looking at the window. But hidden is exactly when the
+favicon read is the only signal still working, and it is what keeps the tray icon honest. Gating on `document.hidden`
+would either switch the poll off in the one state it matters in, or — if the webview does not report a tray-hidden
+window as hidden — save nothing at all. Neither is worth having.
+
+### `withGlobalTauri` stays on
+
+It hands the remote page the whole `@tauri-apps/api` bundle as `window.__TAURI__`, which reads like a surface worth
+closing. It is not, and turning it off would cost a feature.
+
+Nothing in that bundle bypasses the ACL: every call still arrives as an `invoke` and is refused unless the capability
+names it. What the capability names is the five commands in `chat-ipc` plus `event` listen/unlisten, and the only event
+this app ever emits is `notification-activated`, whose payload is a notification id. So the bundle's presence adds no
+reach the page did not already have — it only saves the page from spelling the calls out itself.
+
+`chat.js` gets its `invoke` either way, falling back to `__TAURI_INTERNALS__`. The one hard dependency is
+`__TAURI__.event.listen` in `listenForActivation`, which is what makes a notification click reach the page at all —
+the reason Linux talks to `notify-rust` directly in the first place. Replacing it would mean driving
+`plugin:event|listen` through `__TAURI_INTERNALS__` by hand, trading a documented API for an undocumented one, to close
+something that is not open.
+
 ### Everything in `chat.js` must be idempotent
 
 It is injected twice: once at document start, and again from `on_page_load` as a fallback. Anything that appends,
