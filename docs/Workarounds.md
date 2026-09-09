@@ -83,6 +83,14 @@ hands the work to `deliver` on a worker instead.
 It is deliberately *one* worker rather than a thread per notification: a burst then neither spawns threads unboundedly
 nor lets popups reach the daemon out of order, which serialising on the main thread used to give for free.
 
+### Only sixteen notifications may be waiting on a click
+
+Each one holds a blocked thread and a D-Bus connection until it is clicked, dismissed or expires, so the cost tracks
+what is undismissed on the desktop rather than what was delivered — see Notes.md for the measurement. Past
+`MAX_WAITERS` a notification is still shown, it just carries no action. That is a cheap thing to lose here: a click on
+Linux only raises the window, because Chat gives us nothing to navigate to. The cap is on *concurrent* waiters, so
+slots come back as the user works through the tray — a burst of 60 still gave 48 of them click-through.
+
 ### The click-waiter thread is named explicitly
 
 Linux gives a new thread the creating thread's name, so the waiter spawned from the worker would inherit
@@ -133,6 +141,30 @@ a unit of time.
 
 The button is identified as the visible one inside the `[role="search"]` landmark rather than by `aria-label`, which is
 English here and something else wherever the app is used in another language.
+
+### Zoom is stored at once and handed to the webview a moment later
+
+`set_zoom` looks like it should just call `window.set_zoom`. Doing that synchronously let a page hold the main thread
+for four minutes with 200 calls through `menu_action`, because applying a level is a full relayout of Chat's page and
+the page can ask for any number of them (Notes.md has the figures). So the level is stored immediately and delivered by
+`apply_soon` once the requests stop, which makes a burst of any size cost one relayout at the level it ended on.
+
+It applies on the *leading* edge — the first press after a quiet spell goes straight through — because a pure trailing
+debounce made a single Ctrl+= feel sluggish. Only a press arriving inside the settle window waits. There is one delivery
+thread at a time rather than one per request, and `set_zoom` from off the main thread reaches the event loop the same
+way `features::connectivity` reaches `navigate`.
+
+A rate limit was the obvious alternative and would have done nothing: the calls were already 1.2 s apart, each waiting
+on the relayout it had just asked for.
+
+### The config file is written at most once a second
+
+Two guards, because they catch different things. A change that serialises to what is already on disk writes nothing —
+which alone took a 200-call zoom loop from 201 writes to about 20. On top of that the file is written at most once
+every `WRITE_EVERY`, with a burst held in memory and one writer scheduled to carry whatever it settles on.
+
+The throttle leaves a window where a change is only in memory. Both quit paths call `config::flush`, so that window is
+really only open for a crash or a `kill -9`, and the settings it covers are cheap to redo.
 
 ### Edit → Undo and Redo are custom items driving `document.execCommand`
 

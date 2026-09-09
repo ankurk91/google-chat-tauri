@@ -49,6 +49,20 @@ later, and one of these was wrong for exactly that reason.
 - **wry has no window-open handler.** A `target="_blank"` link or a `window.open` call opens nothing at all — not a
   window, not a tab, not the current one. This is why link hand-off is the one piece of `chat.js` that still runs off
   the Chat origins: everything else there is either refused by the ACL or has no page to act on.
+- **`set_zoom` is a full relayout of the page, and it gets worse the more you ask.** Measured on Mint 22.3 / WebKitGTK
+  2.52.6, driving `menu_action` from the console on a signed-in Chat page:
+
+  | what was asked | cost per call |
+    |---|---|
+  | one step, 1.0 → 3.0 | ~168 ms |
+  | the same step once the level had clamped | ~5 ms — nothing to lay out |
+  | the level moved 200 times in a row, alternating | 456 ms rising to **1495 ms** |
+
+  The degradation under repeated oscillation is WebKit's, not ours; it does not recover within a run. Applied
+  synchronously, 200 alternating calls held the main thread for **246 seconds**. Coalescing the application (see
+  Workarounds) brought the same loop to 70 s, and it is the relayouts that remain, not the writes — a rate limit on the
+  requests would not have touched it, because each call was already waiting 1.2 s for the relayout it had just asked
+  for.
 
 ## Sign-in
 
@@ -86,6 +100,13 @@ later, and one of these was wrong for exactly that reason.
 - **`notify_rust`'s `show()` is expensive enough to stall the main thread.** Measured against gnome-shell 50.1 over 25
   `Notify` calls: median 48 ms, p90 86 ms, **max 520 ms**. Tauri runs synchronous commands on the main thread, which on
   Linux also draws the window's own titlebar buttons.
+- **`wait_for_action` costs a thread *and* a D-Bus connection for as long as the notification is on screen.** The cost
+  therefore tracks what is sitting undismissed, not what has been delivered. Measured on Mint 22.3 / Cinnamon with a
+  burst of 60 and nothing dismissed: threads went 44 → 85, settling at 81 while 18 popups remained, made up of 18
+  `notif-wait` and 19 `zbus::Connection` threads plus tokio workers. RSS moved 192 → 197 MB, so this is threads and
+  descriptors rather than memory. Everything returned to 44 the moment the tray was cleared — **not a leak**, an
+  unbounded cost for being away from the desk while a channel is busy. The realistic trigger is an overnight backlog,
+  not a hostile page.
 
 ## Keyboard and menus
 
