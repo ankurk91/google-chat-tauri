@@ -118,6 +118,7 @@ chmod +x google-chat-tauri_*_linux-amd64.AppImage
 rm -rf google-chat-tauri_*_linux-amd64.AppImage \
   ~/.local/share/com.ankurk91.google-chat-tauri \
   ~/.config/com.ankurk91.google-chat-tauri \
+  ~/.cache/com.ankurk91.google-chat-tauri \
   ~/.config/autostart/'Google Chat.desktop'
 ```
 
