@@ -1,6 +1,6 @@
 //! Tray / badge artwork, compiled into the binary.
 //!
-//! Regenerate with `python3 scripts/gen-tray-icons.py` (the PNGs are committed).
+//! Regenerate with `python3 scripts/gen-icons.py` (the PNGs are committed).
 
 use tauri::image::Image;
 
