@@ -42,6 +42,9 @@ dirs = "6"
 ureq = { version = "3.2", default-features = false, features = ["native-tls", "json"] }
 # Comparing a release tag against our own version. Already in the tree via Tauri.
 semver = "1"
+# Download names arrive percent-encoded, because that is how a URL path carries
+# them. Already in the tree via `url`, so it adds nothing to the build.
+percent-encoding = "2"
 
 # `cfg(desktop)` is a Tauri-defined cfg, not one cargo can select a target on.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -80,5 +83,7 @@ devtools = ["tauri/devtools"]
 codegen-units = 1
 lto = true
 opt-level = "s"
+# Also why every Mutex here is locked with `unwrap`: a panic ends the process,
+# so no thread survives to leave a lock poisoned. See the note on `AppState`.
 panic = "abort"
 strip = true

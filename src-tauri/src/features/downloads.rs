@@ -46,10 +46,12 @@ pub fn handle<R: Runtime>(webview: Webview<R>, event: tauri::webview::DownloadEv
 /// The webview usually proposes a name; fall back to the URL's last segment,
 /// then to something generic rather than writing to a directory path.
 fn file_name_for(proposed: &Path, url: &str) -> String {
-    if let Some(name) = proposed.file_name().and_then(|n| n.to_str()) {
-        if !name.is_empty() {
-            return name.to_owned();
-        }
+    if let Some(name) = proposed
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(sanitize)
+    {
+        return name;
     }
 
     // Parse rather than split on '/': "https://" has no path at all, and
@@ -57,11 +59,52 @@ fn file_name_for(proposed: &Path, url: &str) -> String {
     url::Url::parse(url)
         .ok()
         .and_then(|u| {
-            u.path_segments()?
-                .rfind(|s| !s.is_empty())
-                .map(str::to_owned)
+            let segment = u.path_segments()?.rfind(|s| !s.is_empty())?;
+            // A path segment is percent-encoded by definition, so without this
+            // a shared "quarterly report.pdf" lands as "quarterly%20report.pdf".
+            let decoded = percent_encoding::percent_decode_str(segment).decode_utf8_lossy();
+            sanitize(&decoded)
         })
         .unwrap_or_else(|| "download".to_owned())
+}
+
+/// Characters not to hand a filesystem: the separators, and the rest of the set
+/// Windows refuses outright.
+const UNSAFE: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
+/// Reduce a proposed name to something that can only name a file in the
+/// directory we picked.
+///
+/// The webview's own suggestion arrives through `Path::file_name`, which has
+/// already dropped anything that is not a plain name. A name taken from the URL
+/// has had no such treatment: a segment can be `..`, which joins to the parent
+/// directory rather than to a file; it can hold a separator once decoded; and
+/// it can carry control characters straight out of a remote page.
+fn sanitize(name: &str) -> Option<String> {
+    let name = name.trim();
+
+    // "." and ".." name directories, not files, and a run of dots is the same
+    // idea with more of them.
+    if name.is_empty() || name.chars().all(|c| c == '.') {
+        return None;
+    }
+
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || UNSAFE.contains(&c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        // Long enough for any real name, short enough to leave room for the
+        // " (1)" that `unique_path` may add without passing what a filesystem
+        // will take for one component.
+        .take(200)
+        .collect();
+
+    (!cleaned.trim().is_empty()).then_some(cleaned)
 }
 
 /// Never silently overwrite an existing file: "report.pdf" becomes
@@ -107,6 +150,54 @@ mod tests {
             "photo.png"
         );
         assert_eq!(file_name_for(Path::new(""), "https://x/files/"), "files");
+    }
+
+    #[test]
+    fn a_url_segment_cannot_name_the_parent_directory() {
+        // `dir.join("..")` is the downloads folder's parent, not a file in it.
+        //
+        // A literal `.` or `..` never actually reaches us: the url crate
+        // resolves both away while parsing, so "https://x/a/.." is "https://x/"
+        // with no segment left to take, and "https://x/a/." is "https://x/a/",
+        // whose last real segment is an ordinary name.
+        assert_eq!(file_name_for(Path::new(""), "https://x/a/.."), "download");
+        assert_eq!(file_name_for(Path::new(""), "https://x/a/."), "a");
+
+        // A longer run of dots is not a component the parser rewrites, so that
+        // one does arrive, and `sanitize` is what turns it away.
+        assert_eq!(file_name_for(Path::new(""), "https://x/a/..."), "download");
+    }
+
+    #[test]
+    fn a_separator_that_survives_decoding_is_not_a_separator() {
+        // %2F decodes to '/', which would otherwise reach into a subdirectory
+        // -- or, with enough of them, out of the download folder entirely.
+        assert_eq!(
+            file_name_for(Path::new(""), "https://x/a/%2E%2E%2F%2E%2E%2Fetc%2Fpasswd"),
+            ".._.._etc_passwd"
+        );
+    }
+
+    #[test]
+    fn a_percent_encoded_name_arrives_readable() {
+        assert_eq!(
+            file_name_for(Path::new(""), "https://x/a/quarterly%20report.pdf"),
+            "quarterly report.pdf"
+        );
+    }
+
+    #[test]
+    fn control_characters_do_not_reach_the_filesystem() {
+        assert_eq!(
+            file_name_for(Path::new("/tmp/re\nport\u{7}.pdf"), "https://x/y"),
+            "re_port_.pdf"
+        );
+    }
+
+    #[test]
+    fn an_enormous_name_is_cut_to_something_a_filesystem_takes() {
+        let name = file_name_for(Path::new(""), &format!("https://x/{}", "a".repeat(500)));
+        assert_eq!(name.chars().count(), 200);
     }
 
     #[test]
