@@ -7,6 +7,19 @@ use std::time::{Duration, Instant};
 /// user can click their own way out of. See `features::sign_in`.
 const MAX_RESCUES: u32 = 2;
 
+/// Shared state, behind one lock.
+///
+/// Every `lock()` here and in `config` is `unwrap`ed, which is deliberate
+/// rather than careless: the release profile sets `panic = "abort"`, so a panic
+/// takes the process with it and there is no thread left to poison a lock for
+/// anybody. A poisoned lock is therefore reachable only in a debug or test
+/// build, where a panic that has already corrupted this state is exactly what
+/// you want to see rather than to carry on from.
+///
+/// Two places do recover instead, both for reasons that do not apply here: the
+/// `HOME`-swapping guard in `redact`'s tests, so that one failing test does not
+/// take the rest of the file down with it; and the notification queue, where
+/// dropping one notification is not worth ending the process over.
 #[derive(Default)]
 pub struct AppState {
     inner: Mutex<Inner>,
