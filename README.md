@@ -94,16 +94,13 @@ The leading `./` matters — without a path, `apt` looks for a package by that n
 way pulls in the dependencies (`libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1` and OpenSSL) in the
 same step; they come from your distribution and are usually installed already.
 
-Then launch **Google Chat** from your applications menu.
+Then launch **Google Chat** from your applications' menu.
 
-**Uninstall.** The package is named `google-chat`, not `google-chat-tauri`:
+**Uninstall.**:
 
 ```bash
 sudo apt purge google-chat
 ```
-
-That removes the app along with your session, preferences and launch-at-login entry, leaving nothing to clean up by
-hand. Use `apt remove` instead of `purge` to keep them.
 
 ### Linux — `.AppImage` (any distribution)
 
@@ -126,22 +123,27 @@ rm -rf google-chat-tauri_*_linux-amd64.AppImage \
 
 AppImageLauncher and `appimaged` add a menu entry of their own under `~/.local/share/applications/`; remove that too.
 
-### macOS and Windows
+### macOS — `.dmg`
 
-The macOS dmg is universal — Apple silicon and Intel.
+The dmg is universal — Apple Silicon and Intel. Drag **Google Chat** into **Applications**.
 
-The builds are unsigned, so the first launch is blocked. Once past it, the app opens normally from then on.
-
-**macOS** — the first dialog offers to move the app to the Bin. Do not:
+The build is unsigned, so the first launch is blocked and the dialog offers to move the app to the Bin. Do not:
 
 1. Click **Done**.
 2. Open **System Settings → Privacy & Security**.
 3. Scroll to **Security**, where a line names Google Chat as blocked.
 4. Click **Open Anyway** and confirm with your password or Touch ID.
 
-**Windows** — click **More info**, then **Run anyway**.
+Every launch after that is normal.
 
-To uninstall, drag the app out of **Applications** on macOS, or use **Add or remove programs** on Windows.
+**Uninstall.** Drag the app out of **Applications**.
+
+### Windows — `.exe` installer
+
+The build is unsigned, so SmartScreen blocks the first launch: click **More info**, then **Run anyway**. Every launch
+after that is normal.
+
+**Uninstall.** Use **Add or remove programs**.
 
 ## Troubleshooting
 
