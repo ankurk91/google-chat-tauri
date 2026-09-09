@@ -77,14 +77,8 @@ runtime, which is part of Windows 11 and is installed automatically by the insta
 The Linux bundles are built on Ubuntu 24.04, which sets the glibc floor; a binary built there runs on newer
 distributions but not older ones, so 22.04 and Mint 21 are not supported.
 
-On Linux the app is developed against Ubuntu/GNOME first and Linux Mint/Cinnamon second, and both X11 and Wayland are
-supported. Two differences are worth knowing before you file a bug:
-
-- **The dock counter is an Ubuntu feature.** Ubuntu shows the unread count on the dock icon; other desktops have no such
-  API and show it in the window title and on the tray icon instead. All three are driven by the same count.
-- **On Wayland, bringing the window back from the tray can take an extra click.** If the window is already open but
-  behind something else, Wayland does not let an application raise itself, so GNOME offers a *"Google Chat is ready"*
-  notification to click instead. Restoring from minimised, and clicking a message notification, both work normally.
+A couple of small things behave differently depending on your desktop — see
+[docs/Troubleshooting.md](docs/Troubleshooting.md) before filing a bug.
 
 ## Install
 
@@ -105,12 +99,11 @@ Then launch **Google Chat** from your applications menu.
 **Uninstall.** The package is named `google-chat`, not `google-chat-tauri`:
 
 ```bash
-sudo apt remove google-chat          # keeps your session and settings
-sudo apt purge google-chat           # also removes them
+sudo apt purge google-chat
 ```
 
-`purge` runs a removal script that deletes your session, your preferences and the launch-at-login entry — the same three
-places listed under the AppImage below. Nothing is left behind and there is nothing to clean up by hand.
+That removes the app along with your session, preferences and launch-at-login entry, leaving nothing to clean up by
+hand. Use `apt remove` instead of `purge` to keep them.
 
 ### Linux — `.AppImage` (any distribution)
 
@@ -122,20 +115,16 @@ chmod +x google-chat-tauri_*_linux-amd64.AppImage
 ./google-chat-tauri_*_linux-amd64.AppImage
 ```
 
-**Uninstall.** There is no uninstall command, because nothing was installed — an AppImage is one file you downloaded and
-ran. Deleting it removes the app, but not the data it wrote, which lives in the same places any Linux app's data does
-and has to be removed by hand:
+**Uninstall.** Nothing was installed, so delete the file and the data it wrote:
 
 ```bash
-rm google-chat-tauri_*_linux-amd64.AppImage             # the app itself
-
-rm -rf ~/.local/share/com.ankurk91.google-chat-tauri    # session, cookies, logs
-rm -rf ~/.config/com.ankurk91.google-chat-tauri         # preferences, window size and position
-rm -f ~/.config/autostart/'Google Chat.desktop'         # only if you turned on Launch at Login
+rm -rf google-chat-tauri_*_linux-amd64.AppImage \
+  ~/.local/share/com.ankurk91.google-chat-tauri \
+  ~/.config/com.ankurk91.google-chat-tauri \
+  ~/.config/autostart/'Google Chat.desktop'
 ```
 
-If you use AppImageLauncher or `appimaged`, it will have added a menu entry of its own under
-`~/.local/share/applications/`; remove that too, or let the tool do it.
+AppImageLauncher and `appimaged` add a menu entry of their own under `~/.local/share/applications/`; remove that too.
 
 ### macOS and Windows
 

@@ -42,6 +42,10 @@ Every launch after that is normal. From a terminal,
 **Notifications do not appear.** They come from your desktop's own notification service, so check Chat's in-app
 notification settings first (**⚙ Settings → Notifications**), then your desktop's Do Not Disturb.
 
+**The unread count is not on the dock icon.** That counter is an Ubuntu feature. Other desktops have no such API, so
+the count appears in the window title and on the tray icon instead — all three are driven by the same number, so nothing
+is missing.
+
 **The window pops up on its own after a notification.** Your desktop's notification service is reporting notifications
 as clicked when they expire. Turn off the clickable action:
 
@@ -53,10 +57,11 @@ GOOGLE_CHAT_NOTIFICATION_ACTIONS=0 google-chat-tauri
 were. Google Chat does not tell the app which conversation a notification belongs to, and has no per-conversation
 address to jump to, so there is nothing to act on — this is a limitation of Chat rather than a setting you can change.
 
-**"Google Chat is ready" appears instead of the window (Wayland).** Using **Toggle** in the tray while the window is
-already open but behind something else produces a notification rather than the window. Wayland does not permit an
-application to raise itself, so your desktop offers the notification instead; click it to get the window. Minimising
-first, or clicking a message notification, both bring it back directly. On an X11 session this does not happen.
+**"Google Chat is ready" appears instead of the window (Wayland).** Bringing the window back from the tray takes an
+extra click here: using **Toggle** while the window is already open but behind something else produces a notification
+rather than the window. Wayland does not permit an application to raise itself, so your desktop offers the notification
+instead; click it to get the window. Minimising first, or clicking a message notification, both bring it back directly.
+On an X11 session this does not happen.
 
 **It opens a Google or Gmail marketing page instead of Chat.** That is what Google serves a signed-out browser, so the
 app is not broken — its session is gone. If you had just used **Help → Reset App Data** or **File → Sign Out**, that is
