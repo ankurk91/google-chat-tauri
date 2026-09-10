@@ -22,16 +22,8 @@ dist/
 
 # Operating system junk
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-.fseventsd
 Thumbs.db
-ehthumbs.db
 Desktop.ini
-$RECYCLE.BIN/
-*.lnk
 
 # Secrets. Nothing in this app needs one, and the release is unsigned -- but a
 # signing key or a token that lands here should not be one `git add .` away from
@@ -45,4 +37,3 @@ $RECYCLE.BIN/
 *.pfx
 *.keystore
 *.jks
-secrets.json
