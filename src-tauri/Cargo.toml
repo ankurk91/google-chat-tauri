@@ -37,7 +37,7 @@ serde_json = "1"
 url = "2"
 # Resolves the app data directories before there is an AppHandle to ask.
 # The same version Tauri itself depends on, so it adds nothing to the build.
-dirs = "6"
+dirs = "7"
 # Update checks: one small blocking HTTP call, twice a day. native-tls rather
 # than rustls so TLS comes from the platform -- OpenSSL on Linux, which
 # WebKitGTK already pulls in, Schannel on Windows, Security.framework on macOS.
@@ -75,7 +75,7 @@ notify-rust = "4"
 # COM interface, and the call will not typecheck. It is already in the tree via
 # Tauri and adds nothing to the build.
 [target.'cfg(target_os = "windows")'.dependencies]
-webview2-com = "0.38"
+webview2-com = "0.39"
 
 [features]
 default = []
