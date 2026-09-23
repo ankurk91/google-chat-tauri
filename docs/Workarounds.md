@@ -88,6 +88,23 @@ something that is not open.
 It is injected twice: once at document start, and again from `on_page_load` as a fallback. Anything that appends,
 increments or registers unconditionally will do so twice.
 
+### `chat.js` pastes an image a second time (Linux only)
+
+WebKitGTK leaves an image out of the paste event — `clipboardData` arrives empty — so Chat, which reads a pasted image
+from the event and nowhere else, does nothing on Ctrl+V. The image is still readable through `navigator.clipboard.read()`
+from inside that same event, so when a *trusted* paste arrives with no types at all, `chat.js` reads it that way and
+dispatches a second paste event carrying it as a file. Chat takes the replay although it is untrusted. Do not widen the
+condition: a paste with anything in it is left alone, and the replay itself is untrusted and not empty, which is what
+keeps it from looping. Kept off macOS because WKWebView answers the same read with a "Paste" callout of its own.
+
+### `features::media` answers WebKit's permission requests itself (Linux only)
+
+Tauri connects nothing to `WebKitWebView::permission-request`, and an unanswered request is refused — so every
+`getUserMedia` failed at once with `NotAllowedError`. The handler allows the camera, the mic and device labels, only
+while the window is on Chat itself (`urls::is_chat_page`, narrower than the link allow-list, which also trusts the
+sign-in hosts). Everything else — notifications included — goes back to WebKit and is refused as before. It checks the
+page the window shows, not the frame asking, because WebKitGTK does not say which frame that is.
+
 ## Notifications
 
 ### `window.Notification` is replaced wholesale, and Linux talks to `notify-rust` directly

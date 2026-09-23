@@ -66,6 +66,12 @@ tauri-plugin-notification = "2"
 # as mobile-only. Talking to the freedesktop daemon ourselves gets that back.
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = "4"
+# The camera and mic are granted by answering WebKitWebView::permission-request,
+# which Tauri never connects; see `features::media`. Tauri hands out the
+# WebKitWebView typed with this crate, so the version has to be the one Tauri
+# resolves, and it is already in the tree via wry. `v2_24` is for the
+# device-info request; every supported distribution ships far newer.
+webkit2gtk = { version = "2.0", features = ["v2_24"] }
 
 # Windows menu accelerators never reach tao's message loop, so Quit and
 # close-to-tray are asked of WebView2 through `AcceleratorKeyPressed`; see

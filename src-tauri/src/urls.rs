@@ -241,6 +241,23 @@ pub fn should_open_externally(url: &url::Url) -> bool {
     !is_in_app(url)
 }
 
+/// Is the window on Chat itself -- the page that may have the camera and mic?
+///
+/// Narrower than `is_in_app`, which also keeps the sign-in hosts in the window:
+/// a sign-in page has no business with a camera. HTTPS only, because WebKit
+/// refuses `getUserMedia` to anything else and a request from plain HTTP here
+/// would mean something has gone badly wrong.
+pub fn is_chat_page(url: &url::Url) -> bool {
+    if url.scheme() != "https" {
+        return false;
+    }
+    match url.host_str() {
+        Some("chat.google.com") => true,
+        Some("mail.google.com") => url.path().starts_with("/chat"),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -390,6 +407,29 @@ mod tests {
         // And it must be somewhere the link policy keeps in-app, or the sign-in
         // finishes in the system browser.
         assert!(!external(&url), "the sign-in page must stay in-app");
+    }
+
+    fn chat_page(u: &str) -> bool {
+        is_chat_page(&url::Url::parse(u).unwrap())
+    }
+
+    #[test]
+    fn only_chat_itself_may_ask_for_the_camera() {
+        assert!(chat_page(APP_URL));
+        assert!(chat_page("https://mail.google.com/chat/u/1/#chat/home"));
+        assert!(chat_page("https://chat.google.com/u/0/app/home"));
+
+        for u in [
+            // Gmail proper shares the host with Chat-in-Gmail.
+            "https://mail.google.com/mail/u/0/",
+            // The sign-in hosts stay in the window, but are not Chat.
+            "https://accounts.google.com/ServiceLogin",
+            "https://meet.google.com/abc-defg-hij",
+            "https://chat.google.com.evil.example/",
+            "http://chat.google.com/",
+        ] {
+            assert!(!chat_page(u), "{u} must not get the camera");
+        }
     }
 
     #[test]

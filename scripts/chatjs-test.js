@@ -54,7 +54,13 @@ function makeDocument(dom = {}) {
  * install from `location.origin` alone, so it is what picks Chat, a page in
  * transit, or the webview's own failed-load document ("null").
  */
-function load({ dom = {}, onInvoke = () => Promise.resolve(), href, origin } = {}) {
+function load({
+  dom = {},
+  onInvoke = () => Promise.resolve(),
+  href,
+  origin,
+  navigator = { platform: 'Linux x86_64' }
+} = {}) {
   const calls = [];
   const document = makeDocument(dom);
 
@@ -112,6 +118,31 @@ function load({ dom = {}, onInvoke = () => Promise.resolve(), href, origin } = {
   // every link same-origin. Every webview has it.
   context.URL = URL;
 
+  // The image paste replay reads the platform, then builds a paste event of
+  // its own. These are the four web APIs it touches, cut down to what it uses.
+  context.navigator = navigator;
+  context.File = class File {
+    constructor(parts, name, options) {
+      this.parts = parts;
+      this.name = name;
+      this.type = options.type;
+    }
+  };
+  context.DataTransfer = class DataTransfer {
+    constructor() {
+      this.files = [];
+      this.items = { add: (file) => this.files.push(file) };
+    }
+    get types() {
+      return this.files.length ? ['Files'] : [];
+    }
+  };
+  context.ClipboardEvent = class ClipboardEvent {
+    constructor(type, init) {
+      Object.assign(this, init, { type, isTrusted: false });
+    }
+  };
+
   // Same reasoning for rAF, which chat.js uses to wait out Chat's own search
   // animation. Queued rather than run, so a test can step the frames it wants
   // and assert what happened after each -- running it inline would recurse the
@@ -145,7 +176,7 @@ function fire(document, type, event) {
 
 const anchor = (href, target) => ({ tagName: 'A', href, target, parentElement: null });
 
-console.log('[1/8] boot');
+console.log('[1/9] boot');
 {
   const { window, document, calls } = load({ href: 'https://mail.google.com/chat/u/0/?hl=en#chat/dm/AAAA' });
   const attached = calls.find((c) => c.command === 'page_log' && /attached to/.test(c.args.message));
@@ -175,7 +206,7 @@ console.log('[1/8] boot');
  * marketing page after a sign out. Only Chat gets the whole file. This is the
  * section that says so.
  */
-console.log('[2/8] where it runs');
+console.log('[2/9] where it runs');
 {
   // Somebody's identity provider, mid sign-in.
   const idp = load({
@@ -241,7 +272,7 @@ console.log('[2/8] where it runs');
   check('and untouched by the notification shim', failed.window.Notification === undefined);
 }
 
-console.log('[3/8] notifications');
+console.log('[3/9] notifications');
 {
   const { window, calls } = load();
   const shown = new window.Notification('Ankur', { body: 'hello', tag: 'dm/42', data: { url: 'x' } });
@@ -283,7 +314,7 @@ console.log('[3/8] notifications');
   check('marks where it came from', swCall.args.title === 'SW');
 }
 
-console.log('[4/8] links');
+console.log('[4/9] links');
 {
   const { window, calls } = load();
   window.open('https://example.test/page');
@@ -294,7 +325,7 @@ console.log('[4/8] links');
   check('returns something usable to Google', !!stub && typeof stub.close === 'function' && stub.closed === false);
 }
 
-console.log('[5/8] click interception');
+console.log('[5/9] click interception');
 {
   const { document, calls } = load();
   let prevented = 0;
@@ -338,7 +369,7 @@ console.log('[5/8] click interception');
   check('ignores a click on something that is not a link', prevented === 2, `prevented ${prevented}`);
 }
 
-console.log('[6/8] keyboard shortcuts');
+console.log('[6/9] keyboard shortcuts');
 {
   const focused = [];
   const searchBox = {
@@ -408,7 +439,7 @@ console.log('[6/8] keyboard shortcuts');
  * `[role="search"]` landmark holding a hidden "Close search" and the visible
  * button that opens the box.
  */
-console.log('[6b/8] Ctrl+F with the search box collapsed');
+console.log('[6b/9] Ctrl+F with the search box collapsed');
 {
   const clicked = [];
   const focused = [];
@@ -490,7 +521,7 @@ console.log('[6b/8] Ctrl+F with the search box collapsed');
 
 /* And when there is no search region at all -- the sign-in page, or a Google
  * marketing page -- the key has to be left alone rather than swallowed. */
-console.log('[6c/8] Ctrl+F where there is no search box');
+console.log('[6c/9] Ctrl+F where there is no search box');
 {
   const { document } = load({ dom: { querySelector: () => null } });
 
@@ -513,7 +544,7 @@ console.log('[6c/8] Ctrl+F where there is no search box');
  * main and the report moves in with them.
  */
 async function rest() {
-  console.log('[7/8] hand-off fallback');
+  console.log('[7/9] hand-off fallback');
   {
     // The capability names mail.google.com and chat.google.com and nothing
     // else, so on Google's post-sign-out marketing page every invoke is turned
@@ -566,7 +597,7 @@ async function rest() {
     );
   }
 
-  console.log('[8/8] webview error page');
+  console.log('[8/9] webview error page');
   {
     // What WebKitGTK builds for a failed load: an empty head, and a body with
     // one line of text and no elements. Unstyled, so black on the window's
@@ -684,6 +715,116 @@ async function rest() {
     const stillParsing = { head: { children: [] }, body: parsing, readyState: 'complete' };
     load({ origin: 'null', dom: stillParsing });
     check('leaves an empty document alone', parsing.innerHTML === '', parsing.innerHTML);
+  }
+
+  /*
+   * WebKitGTK hands Chat an empty paste event for an image; the replay reads
+   * the clipboard the async way and pastes again. What matters is that it
+   * fires only for that case, and only once.
+   */
+  console.log('[9/9] image paste');
+  {
+    const png = { size: 623 };
+    const clipboardWith = (items) => ({ read: () => Promise.resolve(items) });
+    const imageItem = { types: ['image/png'], getType: () => Promise.resolve(png) };
+
+    const target = () => {
+      const t = { isConnected: true, received: [] };
+      t.dispatchEvent = (event) => {
+        t.received.push(event);
+        return false; // Chat calls preventDefault on it
+      };
+      return t;
+    };
+    const paste = (types, extra) => ({ isTrusted: true, clipboardData: { types }, ...extra });
+
+    {
+      const box = target();
+      const { document, calls } = load({
+        navigator: { platform: 'Linux x86_64', clipboard: clipboardWith([imageItem]) }
+      });
+      fire(document, 'paste', paste([], { target: box }));
+      await settle();
+      const replay = box.received[0];
+      check('replays an empty paste with the image in it', box.received.length === 1,
+        `${box.received.length} replays`);
+      check(
+        'hands Chat a png file, as a browser would',
+        !!replay && replay.type === 'paste' && replay.clipboardData.types[0] === 'Files' &&
+          replay.clipboardData.files[0].type === 'image/png' &&
+          replay.clipboardData.files[0].name === 'image.png'
+      );
+      check('marks the replay cancelable, so Chat can claim it', !!replay && replay.cancelable === true);
+
+      // The replay reaches the capture listener again in a real page. It is
+      // untrusted and not empty, and either is enough to leave it alone.
+      fire(document, 'paste', { ...replay, target: box });
+      await settle();
+      check('does not replay its own replay', box.received.length === 1);
+
+      const logged = calls.find((c) => c.command === 'page_log' && /image paste/.test(c.args.message));
+      check('logs the size and type, never the content', !!logged &&
+        logged.args.message === 'image paste: replayed image/png, 623 bytes, handled=true',
+        logged && logged.args.message);
+    }
+    {
+      let reads = 0;
+      const clipboard = { read: () => (reads++, Promise.resolve([imageItem])) };
+      const { document } = load({ navigator: { platform: 'Linux x86_64', clipboard } });
+      fire(document, 'paste', paste(['text/plain'], { target: target() }));
+      fire(document, 'paste', paste([], { target: target(), isTrusted: false }));
+      await settle();
+      check('leaves a paste that already has something in it alone', reads === 0, `${reads} reads`);
+    }
+    {
+      const box = target();
+      const moved = target();
+      const { document } = load({
+        navigator: { platform: 'Linux x86_64', clipboard: clipboardWith([imageItem]) }
+      });
+      document.activeElement = moved;
+      box.isConnected = false;
+      fire(document, 'paste', paste([], { target: box }));
+      await settle();
+      check('follows the caret if Chat re-rendered the box meanwhile',
+        box.received.length === 0 && moved.received.length === 1);
+    }
+    {
+      const box = target();
+      const { document, calls } = load({
+        navigator: {
+          platform: 'Linux x86_64',
+          clipboard: clipboardWith([{ types: ['text/plain'], getType: () => Promise.resolve({}) }])
+        }
+      });
+      fire(document, 'paste', paste([], { target: box }));
+      await settle();
+      check('does nothing when there is no image to be had', box.received.length === 0 &&
+        !calls.some((c) => c.command === 'page_log' && /image paste/.test(c.args.message)));
+    }
+    {
+      const refusal = Object.assign(new Error('the clipboard holds a secret'), { name: 'NotAllowedError' });
+      const { document, calls } = load({
+        navigator: { platform: 'Linux x86_64', clipboard: { read: () => Promise.reject(refusal) } }
+      });
+      fire(document, 'paste', paste([], { target: target() }));
+      await settle();
+      const warned = calls.find((c) => c.command === 'page_log' && c.args.level === 'warn');
+      check('reports a refused read by name only', !!warned &&
+        warned.args.message === 'image paste: clipboard unreadable: NotAllowedError',
+        warned && warned.args.message);
+    }
+    {
+      const clipboard = clipboardWith([imageItem]);
+      const mac = load({ navigator: { platform: 'MacIntel', clipboard } });
+      check('stays off macOS, where the read raises a callout', !mac.document.listeners.paste);
+      const idp = load({
+        origin: 'https://login.example.test',
+        href: 'https://login.example.test/sso',
+        navigator: { platform: 'Linux x86_64', clipboard }
+      });
+      check('stays off pages that are not Chat', !idp.document.listeners.paste);
+    }
   }
 
   console.log(failures ? `\n${failures} FAILED` : '\nall checks passed');

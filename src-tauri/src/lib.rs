@@ -174,6 +174,12 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             features::accelerators::install(&window);
 
+            // WebKitGTK refuses the camera and mic to a page unless the host
+            // answers its permission request, and Tauri never does. See
+            // `features::media`.
+            #[cfg(target_os = "linux")]
+            features::media::install(&window);
+
             if prefs.zoom != 1.0 {
                 let _ = window.set_zoom(prefs.zoom);
             }

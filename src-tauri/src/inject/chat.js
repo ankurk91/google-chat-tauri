@@ -434,6 +434,70 @@
     );
   }
 
+  /* ---------------------------------------------------------- image paste */
+  /* WebKitGTK leaves images out of the paste event. Measured on Mint 22.3 /
+   * WebKitGTK 2.52.6 in the signed-in app, pasting a screenshot: the event
+   * fires, but its clipboardData has no types, no items and no files -- while
+   * `navigator.clipboard.read()` from inside that same event returns the image
+   * as image/png. Text arrives in the event as it should. Chat reads a pasted
+   * image from the event and nowhere else, so Ctrl+V did nothing at all.
+   *
+   * So when a real paste arrives empty, read the clipboard the other way and
+   * paste again with the image in hand. Chat accepts the replay although it is
+   * not trusted -- measured: it calls preventDefault on it, the image lands in
+   * the draft, and it sends.
+   *
+   * Linux only. The read needs no permission there, because the keypress is
+   * the user gesture; WKWebView answers the same read with a "Paste" callout of
+   * its own, and neither it nor WebView2 is known to drop images from the
+   * event. `navigator.platform` is the real platform -- the user agent is
+   * spoofed, this is not. */
+
+  const onLinux = /Linux/.test(navigator.platform);
+
+  async function replayImagePaste(target) {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find((t) => t.startsWith('image/'));
+        if (!type) continue;
+
+        const blob = await item.getType(type);
+        const data = new DataTransfer();
+        data.items.add(new File([blob], `image.${type.slice(6).split('+')[0]}`, { type }));
+
+        // The clipboard is read asynchronously, and Chat can re-render the
+        // compose box meanwhile; aim at wherever the caret went if so.
+        const at = target.isConnected ? target : document.activeElement || document.body;
+        const replay = new ClipboardEvent('paste', {
+          clipboardData: data,
+          bubbles: true,
+          cancelable: true
+        });
+        const handled = !at.dispatchEvent(replay);
+        log('debug', `image paste: replayed ${type}, ${blob.size} bytes, handled=${handled}`);
+        return;
+      }
+    } catch (err) {
+      log('warn', `image paste: clipboard unreadable: ${err.name}`);
+    }
+  }
+
+  function installImagePaste() {
+    if (!onLinux || !navigator.clipboard || !navigator.clipboard.read) return;
+
+    document.addEventListener(
+      'paste',
+      (event) => {
+        // Only a real paste with nothing in it. The replay is untrusted, and
+        // it carries the image, so it never comes back through here.
+        if (!event.isTrusted || !event.clipboardData) return;
+        if (event.clipboardData.types.length) return;
+        replayImagePaste(event.target);
+      },
+      true
+    );
+  }
+
   /* ------------------------------------------------------ notifications */
   /* Replaces electron src/preload/overrideNotifications.ts.
    *
@@ -795,6 +859,7 @@
     // Chat itself. All of it.
     installLinkPolicy(everyForeignLink);
     installShortcuts();
+    installImagePaste();
     installNotifications();
 
     whenReady(() => {

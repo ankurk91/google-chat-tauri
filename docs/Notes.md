@@ -63,6 +63,28 @@ later, and one of these was wrong for exactly that reason.
   Workarounds) brought the same loop to 70 s, and it is the relayouts that remain, not the writes — a rate limit on the
   requests would not have touched it, because each call was already waiting 1.2 s for the relayout it had just asked
   for.
+- **WebKitGTK drops images from the paste event.** Measured on Mint 22.3 / WebKitGTK 2.52.6, in the signed-in app and in
+  a bare WebKitGTK view with wry's settings, pasting a PNG that was verifiably on the clipboard: the event fires, and
+  `clipboardData` has no types, no items and no files. Text arrives normally. The result is the same whichever process
+  owns the clipboard and whether or not `javascript-can-access-clipboard` is on. `navigator.clipboard.read()` called from
+  inside a real Ctrl+V returns the image as `image/png` without any permission prompt; called with no user gesture it is
+  refused with `NotAllowedError`.
+- **The camera and mic are refused until the host says yes.** WebKitGTK routes `getUserMedia` through
+  `permission-request`, and wry 0.55 connects nothing to it. Measured in the app: `enumerateDevices` listed the devices,
+  `getUserMedia` failed at once with `NotAllowedError` and no prompt; with the request allowed, both tracks opened and
+  every device had a label. `enable-media-stream` is already on by default in 2.52 and made no difference either way.
+- **WebRTC is not in Ubuntu's WebKitGTK build, so calls cannot work in-app.** `typeof RTCPeerConnection` is `"undefined"`
+  in the app, and stays `"undefined"` in a bare view with `enable-webrtc` switched on. The 2.52.6 library
+  (`2.52.6-0ubuntu0.24.04.1`, also what Mint 22 ships) contains no reference to GStreamer's `webrtcbin`, which WebKitGTK's
+  WebRTC runs on. No setting of ours can change that.
+- **Chat's video and voice messages cannot be recorded, twice over.** Chat constructs `MediaRecorder` with
+  `mimeType: "video/webm"` (or `audio/ogg; codecs=opus`) even after `isTypeSupported` has told it WebKit records only
+  MP4 — so the constructor throws `NotSupportedError` and the timer never starts. Forcing an MP4 type gets it recording,
+  but the file is **0 bytes**: WebKit's recorder never receives a single audio sample (`Source element hasn't prerolled
+  yet` in `webkitmediarecorder`, left 6 s). Measured in the app with the real mic, and in a bare WebKitGTK view with an
+  oscillator track; a video-only H.264 recording from a canvas produced 25 KB in 2 s, and every combination with audio
+  in it — AAC or Opus, with or without video — produced nothing. Swapping the type in `chat.js` would only turn "does
+  not start" into "sends an empty file", so it is not done.
 
 ## Sign-in
 

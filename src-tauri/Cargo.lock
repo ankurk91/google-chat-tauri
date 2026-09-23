@@ -1618,6 +1618,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "ureq",
  "url",
+ "webkit2gtk",
  "webview2-com 0.39.1",
 ]
 
