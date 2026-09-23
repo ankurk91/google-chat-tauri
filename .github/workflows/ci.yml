@@ -74,7 +74,7 @@ jobs:
       # before it reaches the page. Only node itself is needed for that, hence
       # no install: there is nothing in node_modules this job uses.
       - name: Install Node
-        uses: pnpm/setup@v2
+        uses: pnpm/setup@v3
         with:
           runtime: node@24
           install: false
