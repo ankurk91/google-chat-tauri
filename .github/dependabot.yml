@@ -22,6 +22,15 @@ updates:
       # an upgrade that does not exist.
       - dependency-name: glib
 
+      # The webview's own bindings. Tauri hands out its webview typed with
+      # these crates, so ours must be the exact version Tauri resolves; a
+      # newer one is a second copy of the same types, and the call does not
+      # typecheck. A bump of webview2-com to 0.39 against Tauri's 0.38 broke
+      # the Windows build of v1.1.1 -- CI builds on Linux only, so nothing
+      # saw it until the release did. Move these by hand, with Tauri.
+      - dependency-name: webview2-com
+      - dependency-name: webkit2gtk
+
   # Keeps the actions in the workflows current; nothing else watches them.
   - package-ecosystem: github-actions
     directory: /

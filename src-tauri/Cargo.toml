@@ -81,7 +81,7 @@ webkit2gtk = { version = "2.0", features = ["v2_24"] }
 # COM interface, and the call will not typecheck. It is already in the tree via
 # Tauri and adds nothing to the build.
 [target.'cfg(target_os = "windows")'.dependencies]
-webview2-com = "0.39"
+webview2-com = "0.38"
 
 [features]
 default = []
