@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in the app does not work, or works differently from Google Chat in a browser.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Quickest way:** in the app, **Help → Report an Issue** opens a new issue with the Environment already filled in.
+
+        Before filing, [Troubleshooting](https://github.com/ankurk91/google-chat-tauri/blob/main/docs/Troubleshooting.md) covers the common ones: macOS refusing to open the app, a missing dock badge, the window popping up after a notification.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw. A screenshot helps if it is something on screen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What should have happened instead — for example, what Google Chat does in a browser.
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        **Help → Report an Issue** fills this in for you. Otherwise open **Help → Show Logs**, open `Google Chat.log`, and copy the lines from the last launch that name the platform, webview and session.
+        Almost every bug here depends on the platform, so a report without this usually cannot be acted on.
+      placeholder: |
+        - app: google-chat-tauri 1.1.1 (release)
+        - platform: linux x86_64 — Ubuntu 24.04 LTS, kernel 6.8.0
+        - webview: WebKitGTK 2.52.6
+        - session: ubuntu:GNOME on wayland
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Attach `Google Chat.log` from **Help → Show Logs** (drag it into this box).
+        The log is written so it can be attached to a public issue: it records no message content, and it strips conversation IDs from URLs. It is still worth a glance before you attach it.
+    validations:
+      required: false

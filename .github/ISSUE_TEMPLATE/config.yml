@@ -1,0 +1,8 @@
+# Blank issues stay on: the app's Help → Report an Issue opens
+# /issues/new?body=... with the environment pre-filled, and that is a blank
+# issue. Turning them off would send it to the template chooser and drop the body.
+blank_issues_enabled: true
+contact_links:
+  - name: Troubleshooting
+    url: https://github.com/ankurk91/google-chat-tauri/blob/main/docs/Troubleshooting.md
+    about: Known problems and their fixes — macOS blocking the first launch, the dock badge, notifications.
