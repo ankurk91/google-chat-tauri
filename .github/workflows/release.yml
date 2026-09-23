@@ -63,7 +63,7 @@ jobs:
             libayatana-appindicator3-dev
 
       - name: Install pnpm and Node
-        uses: pnpm/setup@v2
+        uses: pnpm/setup@v3
         with:
           runtime: node@24
           cache: true
