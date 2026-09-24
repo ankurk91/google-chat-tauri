@@ -18,10 +18,13 @@ later, and one of these was wrong for exactly that reason.
 - **A hidden window is inert, not merely invisible.** Chat's router does nothing while the page is hidden, and Chat does
   not render its navigation either — so the DOM the unread count scrapes is absent and the count reads zero, exactly
   when the tray is the only thing the user can see.
-- **The sidebar's "Chat" section is now "Direct messages".** Seen 2026-09-24 on macOS 15.6: the sidebar reads
-  Shortcuts / Direct messages / Spaces, the count selector matched only "Chat" and "Spaces", and the count read zero
-  with the window in front — no dock badge, no title count, while the favicon-driven tray dot kept working. Nothing
-  failed loudly; `chat.js` now logs a warning when the favicon and the count disagree for 30 s.
+- **The sidebar was rebuilt, and the old count selectors match nothing.** Seen 2026-09-24, identically with the macOS
+  and the Linux user-agent: the sidebar reads Shortcuts / Direct messages / Spaces, and the page has no `role="group"`
+  sections and no sidebar `role="heading"` at all — the one heading is Google's top bar. Renaming "Chat" to "Direct
+  messages" in the selector did nothing (0 sections matched). Each section is now `div[data-section-type]` (1 Direct
+  messages, 2 Spaces, 10 Shortcuts), and its header toggle's `aria-labelledby` names two ids, the label and then the
+  count. The count read zero with the window in front — no dock badge, no title count — while the favicon-driven tray
+  dot kept working, so nothing looked broken; `chat.js` now logs a warning when the two disagree for 30 s.
 - **WebKitGTK's failed-load page has no styling whatsoever.** It is built as `<html><body>%s</body></html>` and that is
   the whole template — confirmed by reading it out of the shipped `libwebkit2gtk-4.1`. Unstyled text is black, the
   window's `background_color` is Google's dark grey, so the one line explaining the failure renders black on black. wry

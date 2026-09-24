@@ -132,30 +132,50 @@
   }
 
   /* ------------------------------------------------- unread message counter */
-  /* Google has renamed the "Chat" sidebar section to "Direct messages" (next
-   * to "Shortcuts" and "Spaces"); both names are kept, for accounts still on
-   * the old layout. The tooltips are English, so a non-English UI still reads
-   * zero. */
+  /* Each sidebar section is a `data-section-type` block: 1 is Direct
+   * messages, 2 is Spaces, 10 is Shortcuts. Its header toggle is labelled by
+   * two ids -- the section name, then the count -- so the count is found
+   * through `aria-labelledby` rather than through Google's generated class
+   * names or its English labels. Shortcuts is left out: its count repeats the
+   * other two. Read from the signed-in page on 2026-09-24. */
 
-  const UNREAD_SELECTORS = [
+  const UNREAD_SECTIONS = '[data-section-type="1"],[data-section-type="2"]';
+
+  // The layout before that one: a role="group" per section, named by tooltip,
+  // with the count right after the heading. Kept for accounts still on it.
+  const LEGACY_SECTIONS = [
     'div[data-tooltip="Chat"][role="group"]',
-    'div[data-tooltip="Direct messages"][role="group"]',
     'div[data-tooltip="Spaces"][role="group"]'
   ].join(',');
 
   let sections = 0;
 
+  function sectionCount(section) {
+    const toggle = section.querySelector('[role="button"][aria-labelledby][aria-controls]');
+    const ids = toggle ? toggle.getAttribute('aria-labelledby').trim().split(/\s+/) : [];
+    const badge = ids.length > 1 ? document.getElementById(ids[ids.length - 1]) : null;
+    return badge ? parseInt(badge.textContent, 10) : NaN;
+  }
+
+  function legacyCount(group) {
+    const heading = group.querySelector('span[role="heading"]');
+    const badge = heading && heading.nextElementSibling;
+    return badge ? Number(badge.textContent) : NaN;
+  }
+
   function readUnreadCount() {
-    const groups = document.body ? document.body.querySelectorAll(UNREAD_SELECTORS) : [];
-    sections = groups.length;
+    if (!document.body) return 0;
+    let found = document.body.querySelectorAll(UNREAD_SECTIONS);
+    let read = sectionCount;
+    if (found.length === 0) {
+      found = document.body.querySelectorAll(LEGACY_SECTIONS);
+      read = legacyCount;
+    }
+    sections = found.length;
+
     let total = 0;
-
-    for (const group of groups) {
-      const heading = group.querySelector('span[role="heading"]');
-      const badge = heading && heading.nextElementSibling;
-      if (!badge) continue;
-
-      const count = Number(badge.textContent);
+    for (const section of found) {
+      const count = read(section);
       if (!isNaN(count)) total += count;
     }
     return total;

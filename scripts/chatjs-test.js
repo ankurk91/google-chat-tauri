@@ -39,6 +39,7 @@ function makeDocument(dom = {}) {
       (listeners[type] = listeners[type] || []).push({ handler, capture });
     },
     querySelector: dom.querySelector || (() => null),
+    getElementById: dom.getElementById || (() => null),
     // `head` and `readyState` are only touched by the error-page fingerprint;
     // a head with something in it is what every real page has.
     readyState: dom.readyState || 'complete',
@@ -541,34 +542,39 @@ console.log('[6c/9] Ctrl+F where there is no search box');
 }
 
 /*
- * The unread count, against the sidebar as it is now: "Shortcuts", "Direct
- * messages" and "Spaces", each section heading followed by its count. This
- * proves the selector list and the arithmetic, not that Google still ships the
- * markup -- only the signed-in app can say that.
+ * The unread count, against the sidebar as read from the signed-in page: a
+ * `data-section-type` block per section, whose header toggle is labelled by
+ * the section name and then the count. This proves the lookup and the
+ * arithmetic, not that Google still ships the markup -- only the signed-in app
+ * can say that.
  */
 console.log('[6d/9] unread count from the sidebar');
 {
-  const section = (tooltip, n) => ({
-    tooltip,
-    querySelector: () => ({ nextElementSibling: n === null ? null : { textContent: String(n) } })
-  });
-  const sidebar = [section('Shortcuts', 7), section('Direct messages', 2), section('Spaces', 3), section('Chat', null)];
+  const byId = {};
+  const section = (type, id, n) => {
+    if (n !== null) byId[id] = { textContent: String(n) };
+    const toggle = { getAttribute: () => `label-${id} ${id}` };
+    return { type, querySelector: (sel) => (/aria-labelledby/.test(sel) ? toggle : null) };
+  };
+  // Shortcuts repeats the other two, so it must not be added in.
+  let sidebar = [section('10', 'c1', 4), section('1', 'c27', 2), section('2', 'c35', '99+'), section('1', 'c40', null)];
   const favicon = { href: 'https://www.gstatic.com/chat/favicon_dot_64px.png' };
   const dom = {
     querySelector: (sel) => (/icon/.test(sel) ? favicon : null),
+    getElementById: (id) => byId[id] || null,
     body: {
       children: [{}],
-      querySelectorAll: (sel) => sidebar.filter((s) => sel.includes(`[data-tooltip="${s.tooltip}"]`))
+      querySelectorAll: (sel) => sidebar.filter((s) => sel.includes(`[data-section-type="${s.type}"]`))
     }
   };
 
   const { calls, tick } = load({ dom });
   const sent = calls.filter((c) => c.command === 'set_unread_count').pop();
-  check('adds up Direct messages and Spaces, not Shortcuts', !!sent && sent.args.count === 5,
+  check('adds up Direct messages and Spaces, not Shortcuts', !!sent && sent.args.count === 101,
     sent && `count=${sent.args.count}`);
 
   // The markup moves on: nothing matches, while the favicon still says unread.
-  sidebar.length = 0;
+  sidebar = [];
   for (let i = 0; i < 40; i++) tick();
   const warned = calls.filter((c) => c.command === 'page_log' && /sidebar count read 0/.test(c.args.message));
   check('says once when the sidebar stops yielding a count', warned.length === 1, `${warned.length} warning(s)`);
