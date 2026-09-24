@@ -132,15 +132,22 @@
   }
 
   /* ------------------------------------------------- unread message counter */
-  /* Ported verbatim from electron src/preload/unreadCount.ts */
+  /* Google has renamed the "Chat" sidebar section to "Direct messages" (next
+   * to "Shortcuts" and "Spaces"); both names are kept, for accounts still on
+   * the old layout. The tooltips are English, so a non-English UI still reads
+   * zero. */
 
   const UNREAD_SELECTORS = [
     'div[data-tooltip="Chat"][role="group"]',
+    'div[data-tooltip="Direct messages"][role="group"]',
     'div[data-tooltip="Spaces"][role="group"]'
   ].join(',');
 
+  let sections = 0;
+
   function readUnreadCount() {
     const groups = document.body ? document.body.querySelectorAll(UNREAD_SELECTORS) : [];
+    sections = groups.length;
     let total = 0;
 
     for (const group of groups) {
@@ -177,11 +184,25 @@
 
   let lastCount = -1;
   let lastHasUnread = null;
+  let misses = 0; // consecutive polls; Infinity once reported
 
   function pollUnread() {
     const count = readUnreadCount();
     let hasUnread = readHasUnread();
     if (hasUnread === null) hasUnread = lastHasUnread === null ? count > 0 : lastHasUnread;
+
+    // The favicon says unread, the window is on screen, yet the sidebar gave
+    // no number: the markup has moved again. Say so once, or the dock badge
+    // and the title count just quietly stop. Thirty polls in a row, so a page
+    // still drawing its sidebar does not count.
+    if (hasUnread && count === 0 && !document.hidden) {
+      if (++misses === 30) {
+        log('warn', `unread: favicon shows unread but the sidebar count read 0 (${sections} section(s) matched)`);
+        misses = Infinity;
+      }
+    } else if (misses !== Infinity) {
+      misses = 0;
+    }
 
     if (count === lastCount && hasUnread === lastHasUnread) return;
     lastCount = count;

@@ -65,6 +65,7 @@ function load({
   const document = makeDocument(dom);
 
   const windowListeners = {};
+  const intervals = [];
 
   const window = {
     top: null,
@@ -80,7 +81,7 @@ function load({
     addEventListener(type, handler) {
       (windowListeners[type] = windowListeners[type] || []).push(handler);
     },
-    setInterval: () => 0,
+    setInterval: (fn) => intervals.push(fn),
     clearInterval: () => {},
     open: function nativeOpen() {},
     ServiceWorkerRegistration: function () {},
@@ -158,7 +159,7 @@ function load({
   };
 
   vm.runInContext(fs.readFileSync(SCRIPT, 'utf8'), context, { filename: 'chat.js' });
-  return { window, document, calls, drainFrames };
+  return { window, document, calls, drainFrames, tick: () => intervals.forEach((fn) => fn()) };
 }
 
 /** Fire a listener chat.js registered on `window` rather than on `document`. */
@@ -537,6 +538,40 @@ console.log('[6c/9] Ctrl+F where there is no search box');
   });
 
   check('leaves the key to the webview', prevented === 0);
+}
+
+/*
+ * The unread count, against the sidebar as it is now: "Shortcuts", "Direct
+ * messages" and "Spaces", each section heading followed by its count. This
+ * proves the selector list and the arithmetic, not that Google still ships the
+ * markup -- only the signed-in app can say that.
+ */
+console.log('[6d/9] unread count from the sidebar');
+{
+  const section = (tooltip, n) => ({
+    tooltip,
+    querySelector: () => ({ nextElementSibling: n === null ? null : { textContent: String(n) } })
+  });
+  const sidebar = [section('Shortcuts', 7), section('Direct messages', 2), section('Spaces', 3), section('Chat', null)];
+  const favicon = { href: 'https://www.gstatic.com/chat/favicon_dot_64px.png' };
+  const dom = {
+    querySelector: (sel) => (/icon/.test(sel) ? favicon : null),
+    body: {
+      children: [{}],
+      querySelectorAll: (sel) => sidebar.filter((s) => sel.includes(`[data-tooltip="${s.tooltip}"]`))
+    }
+  };
+
+  const { calls, tick } = load({ dom });
+  const sent = calls.filter((c) => c.command === 'set_unread_count').pop();
+  check('adds up Direct messages and Spaces, not Shortcuts', !!sent && sent.args.count === 5,
+    sent && `count=${sent.args.count}`);
+
+  // The markup moves on: nothing matches, while the favicon still says unread.
+  sidebar.length = 0;
+  for (let i = 0; i < 40; i++) tick();
+  const warned = calls.filter((c) => c.command === 'page_log' && /sidebar count read 0/.test(c.args.message));
+  check('says once when the sidebar stops yielding a count', warned.length === 1, `${warned.length} warning(s)`);
 }
 
 /*
