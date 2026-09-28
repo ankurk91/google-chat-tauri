@@ -1,10 +1,16 @@
 version: 2
 
+# Every ecosystem waits a week after a release before proposing it. A version
+# pulled or patched within days of publishing -- a broken build, a hijacked
+# package -- then never reaches a pull request here. Security updates are not
+# held back by this.
 updates:
   - package-ecosystem: cargo
     directory: /src-tauri
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       cargo:
         patterns: ['*']
@@ -36,6 +42,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ['*']
@@ -45,3 +53,5 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
