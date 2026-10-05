@@ -130,6 +130,24 @@ what is undismissed on the desktop rather than what was delivered — see Notes.
 Linux only raises the window, because Chat gives us nothing to navigate to. The cap is on *concurrent* waiters, so
 slots come back as the user works through the tray — a burst of 60 still gave 48 of them click-through.
 
+### Every notification names its desktop entry and carries a sound name
+
+`deliver` sends `desktop-entry: "Google Chat"` and `sound-name: "message-new-instant"` on every notification, in both
+branches — clickable or not. This looks like a preference waiting to happen; it is not one, and the value is not ours
+to invent:
+
+* Without `desktop-entry` the desktop files the notification under an anonymous event, and on Plasma that event plays
+  **no sound** and has no per-app settings to change that. The sound a KDE user heard was Chat's own, played by the
+  webview — quiet, unreachable from System Settings, and dead whenever the window had been hidden (see Notes.md).
+* `sound-name` is a request, not a command: a desktop whose sound theme lacks the name, or whose daemon plays no
+  sounds at all, ignores it and is exactly where it was before.
+* The value must keep matching the *installed* desktop file's name, which Tauri derives from `productName` — the same
+  coupling the badge relies on. Rename one without the other and the per-app settings quietly stop matching.
+
+The page's own sound still plays while the window is visible, so a visible window can deliver two sounds. Deliberate,
+for now: the per-app settings that `desktop-entry` unlocks let the user drop either half, and muting Chat's page-side
+sound from `chat.js` would mean fighting Chat's own UI for it.
+
 ### The click-waiter thread is named explicitly
 
 Linux gives a new thread the creating thread's name, so the waiter spawned from the worker would inherit
