@@ -198,19 +198,16 @@ fn deliver(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
         .icon("google-chat-tauri")
         // Names the installed .desktop entry (product name, so the id is
         // "Google Chat") instead of staying anonymous. Without it the desktop
-        // files the notification under a generic event that plays no sound and
-        // has no per-app settings to fix that -- which is why the only sound a
-        // KDE user ever heard was the page's own, played by the webview, and it
-        // went silent whenever the window had been hidden. With it, the app
-        // shows up under System Settings -> Notifications -> Application
-        // Settings, and the `sound_name` below plays on the daemon's side,
-        // however long the app has sat hidden. Measured against Plasma 6;
-        // see the sound entry in `docs/Notes.md`.
+        // files the notification under a generic event that has no per-app
+        // settings; with it, the app shows up under System Settings ->
+        // Notifications -> Application Settings.
         .hint(notify_rust::Hint::DesktopEntry("Google Chat".into()))
-        // The freedesktop sound-theme name for an incoming instant message. A
-        // desktop without that sound, or without a daemon that plays sounds at
-        // all, ignores it and is no worse off than before.
-        .sound_name("message-new-instant")
+        // The popup stays silent. The page plays its own sound on every
+        // notification -- audible even while the window is hidden, as long as
+        // the page is alive -- and a daemon sound on top of it delivered two
+        // notes per message. `desktop-entry` alone would make the daemon pick
+        // its default sound, so this asks it not to.
+        .hint(notify_rust::Hint::SuppressSound(true))
         // Chat notifications are transient; let the daemon time them out.
         .hint(notify_rust::Hint::Category("im.received".into()));
 

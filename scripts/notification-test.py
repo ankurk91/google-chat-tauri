@@ -17,10 +17,10 @@ Clicking the popup is not automated: Cinnamon draws notifications inside the
 compositor, so there is no X window to target.
 
 The same fired notification is also checked for the D-Bus hints the desktop
-needs -- `desktop-entry` naming the installed .desktop entry and `sound-name`
-for the daemon's own sound -- by capturing the session bus with dbus-monitor
-while it goes out. Whether the daemon then *plays* that sound needs ears; see
-docs/Notes.md.
+needs -- `desktop-entry` naming the installed .desktop entry and `suppress-sound`
+to keep the popup silent (the page plays its own sound) -- by capturing the
+session bus with dbus-monitor while it goes out. Whether the daemon then keeps
+its silence needs ears; see docs/Notes.md.
 
 Requires Linux/X11 and python-xlib. On a Wayland session the pointer check is
 advisory only -- see `watch_pointer`.
@@ -41,19 +41,21 @@ LOG = pathlib.Path("/tmp/gchat-notification-test.log")
 BUS = pathlib.Path("/tmp/gchat-notification-test.bus")
 SETTLE = 18  # comfortably past the daemon's default notification timeout
 
-# Each hint the app must send: what should be on the bus, and the source
-# fragment that is supposed to produce it. Fragments, not bare values, for the
-# staleness check -- "Google Chat" is also the appname, which predates the
-# hint, so a value-only check would pass with the hint deleted. A renamed or
-# removed hint must fail loudly in `check_marker`, not pass vacuously.
+# Each hint the app must send: how it should render in the dbus-monitor
+# capture, and the source fragment that is supposed to produce it. Fragments,
+# not bare values, for the staleness check -- "Google Chat" is also the
+# appname, which predates the hint, so a value-only check would pass with the
+# hint deleted. A renamed or removed hint must fail loudly in `check_marker`,
+# not pass vacuously. Note the renderings are verbatim capture lines: a string
+# hint prints as `string "..."`, a boolean as `boolean true`.
 HINTS = {
     "desktop-entry": {
-        "value": "Google Chat",
+        "on_bus": 'string "Google Chat"',
         "source": 'Hint::DesktopEntry("Google Chat".into())',
     },
-    "sound-name": {
-        "value": "message-new-instant",
-        "source": 'sound_name("message-new-instant")',
+    "suppress-sound": {
+        "on_bus": "boolean true",
+        "source": 'Hint::SuppressSound(true)',
     },
 }
 
@@ -158,7 +160,7 @@ def check_bus():
     """Whether the capture carries every hint in HINTS."""
     text = BUS.read_text(errors="replace")
     return all(
-        f'string "{name}"' in text and f'string "{hint["value"]}"' in text
+        f'string "{name}"' in text and hint["on_bus"] in text
         for name, hint in HINTS.items()
     )
 

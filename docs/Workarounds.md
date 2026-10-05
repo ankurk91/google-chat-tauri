@@ -130,17 +130,14 @@ what is undismissed on the desktop rather than what was delivered — see Notes.
 Linux only raises the window, because Chat gives us nothing to navigate to. The cap is on *concurrent* waiters, so
 slots come back as the user works through the tray — a burst of 60 still gave 48 of them click-through.
 
-### Every notification names its desktop entry and carries a sound name
+### Every notification names its desktop entry and asks for silence
 
-`deliver` sends `desktop-entry: "Google Chat"` and `sound-name: "message-new-instant"` on every notification. Without
-the first, Plasma files the notification under an anonymous event that plays no sound and has no per-app settings to
-fix that. The value must keep matching the installed desktop file's name, which Tauri derives from `productName` — the
-same coupling the badge relies on. `sound-name` is a request, not a command: a desktop without that sound in its theme
-ignores it.
-
-The page's own sound still plays while the window is visible, so a visible window can deliver two sounds. Deliberate:
-the per-app settings that `desktop-entry` unlocks let the user drop either half, and muting Chat's page-side sound
-from `chat.js` would mean fighting Chat's own UI for it.
+`deliver` sends `desktop-entry: "Google Chat"` and `suppress-sound` on every notification. The popup carries no sound
+of its own: the page plays one on every notification, and a daemon sound on top of it delivered two notes per message.
+With `desktop-entry` but without the silence request, the daemon would pick its default sound. The value must keep
+matching the installed desktop file's name, which Tauri derives from `productName` — the same coupling the badge
+relies on. A desktop that ignores `suppress-sound` leaves the double sound where it was, and the per-app settings it
+unlocks let the user silence the daemon by hand.
 
 ### The click-waiter thread is named explicitly
 
