@@ -134,9 +134,7 @@ struct Job {
 /// tray's Test Notification is a menu handler. That is also the thread that
 /// draws and services the window's own close, minimise and maximise buttons --
 /// mutter gives Wayland clients no server-side titlebar, so GTK draws them in
-/// this process (on KDE the compositor draws them instead -- see Notes.md --
-/// but it is still the one thread that stalls) -- so showing a notification
-/// there stalls them. Measured against
+/// this process -- so showing a notification there stalls them. Measured against
 /// gnome-shell 50.1 over 25 calls: median 48 ms, max 520 ms, and a burst of
 /// messages compounds it. See the titlebar entry in `docs/Notes.md`.
 ///

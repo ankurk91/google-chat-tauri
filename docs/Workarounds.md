@@ -132,21 +132,15 @@ slots come back as the user works through the tray — a burst of 60 still gave 
 
 ### Every notification names its desktop entry and carries a sound name
 
-`deliver` sends `desktop-entry: "Google Chat"` and `sound-name: "message-new-instant"` on every notification, in both
-branches — clickable or not. This looks like a preference waiting to happen; it is not one, and the value is not ours
-to invent:
+`deliver` sends `desktop-entry: "Google Chat"` and `sound-name: "message-new-instant"` on every notification. Without
+the first, Plasma files the notification under an anonymous event that plays no sound and has no per-app settings to
+fix that. The value must keep matching the installed desktop file's name, which Tauri derives from `productName` — the
+same coupling the badge relies on. `sound-name` is a request, not a command: a desktop without that sound in its theme
+ignores it.
 
-* Without `desktop-entry` the desktop files the notification under an anonymous event, and on Plasma that event plays
-  **no sound** and has no per-app settings to change that. The sound a KDE user heard was Chat's own, played by the
-  webview — quiet, unreachable from System Settings, and dead whenever the window had been hidden (see Notes.md).
-* `sound-name` is a request, not a command: a desktop whose sound theme lacks the name, or whose daemon plays no
-  sounds at all, ignores it and is exactly where it was before.
-* The value must keep matching the *installed* desktop file's name, which Tauri derives from `productName` — the same
-  coupling the badge relies on. Rename one without the other and the per-app settings quietly stop matching.
-
-The page's own sound still plays while the window is visible, so a visible window can deliver two sounds. Deliberate,
-for now: the per-app settings that `desktop-entry` unlocks let the user drop either half, and muting Chat's page-side
-sound from `chat.js` would mean fighting Chat's own UI for it.
+The page's own sound still plays while the window is visible, so a visible window can deliver two sounds. Deliberate:
+the per-app settings that `desktop-entry` unlocks let the user drop either half, and muting Chat's page-side sound
+from `chat.js` would mean fighting Chat's own UI for it.
 
 ### The click-waiter thread is named explicitly
 
@@ -336,11 +330,22 @@ works for an AppImage, never the deb most people install. This app opens the rel
 It starts with a stdout target *and* a log-directory target already. Adding them with `target()` leaves the defaults in
 place and writes every line twice.
 
+## Tray
+
+### The tray-icon dependency exists only for its `ksni` feature
+
+Left-click-to-toggle needs click events, which the default libappindicator backend never delivers; the ksni backend
+does, and having the feature on makes tray-icon compile it in. Cargo can only turn features on, never off, so the
+direct dependency exists to enable the feature and nothing else — the app never calls tray-icon.
+
+### The tray's About is a regular item on Linux
+
+The ksni menu snapshot renders predefined items other than separators as disabled blanks, so on Linux About is an
+ordinary `MenuItem` whose handler opens a message dialog. macOS and Windows keep the predefined item.
+
 ## Deliberately not built
 
-Auto-update that installs itself; a spellchecker toggle, for which Tauri exposes no API; and single-click tray toggle on
-Linux — the GTK tray backend emits no click events at all, so that would mean replacing Tauri's tray with a direct
-StatusNotifierItem backend, a parallel implementation judged not worth it. Left-click opens the menu, with Toggle first.
+Auto-update that installs itself, and a spellchecker toggle, for which Tauri exposes no API.
 
 Attachment links open in the system browser, which works. `on_download` would keep them in-app: one line in
 `urls::is_in_app`.
