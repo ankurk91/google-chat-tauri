@@ -136,6 +136,20 @@ later, and one of these was wrong for exactly that reason.
   descriptors rather than memory. Everything returned to 44 the moment the tray was cleared — **not a leak**, an
   unbounded cost for being away from the desk while a channel is busy. The realistic trigger is an overnight backlog,
   not a hostile page.
+- **Plasma plays no sound for an app it cannot identify.** The event an anonymous notification lands in —
+  `[Event/notification]` in `/usr/share/knotifications6/plasma_workspace.notifyrc` on Plasma 6 — is `Action=Popup`
+  with no `Sound=`. Until the app started naming itself with the `desktop-entry` hint, the only sound a KDE user heard
+  was Chat's own, played inside the webview: reported quiet, unreachable from System Settings (it is not a
+  notification sound to Plasma), and missing when the window had been hidden a while. The hints hand the daemon both
+  halves: the app appears under System Settings → Notifications → Application Settings, and the `sound-name` is
+  played on the daemon's side, however long the app has sat hidden. Measured by capturing the session bus
+  (`dbus-monitor`; `scripts/notification-test.py` now does this on every run): the test `Notify` carries
+  `desktop-entry` `"Google Chat"` and `sound-name` `"message-new-instant"`. That Plasma then lists the app and
+  actually plays the sound needs ears and eyes — clicking through System Settings is the check.
+- **The `desktop-entry` value is the installed desktop file's name, which Tauri derives from `productName`** — the
+  same coupling the badge relies on (The Linux desktop). "Google Chat.desktop" has a space in it, which is legal
+  (LibreOffice ships the same shape) and matches what the deb installs; rename one without the other and the per-app
+  settings quietly stop matching again.
 
 ## Keyboard and menus
 
@@ -265,6 +279,15 @@ later, and one of these was wrong for exactly that reason.
   `gtk_main_iteration_do` → tao's `event_loop.rs`. The page renders in a separate `WebKitWebProcess` and keeps working
   meanwhile, which is why a blocked main thread reads as "the buttons are broken" rather than "the app is busy".
   `set_unread_count` and the tray menu handler still block it; measure before assuming they are free.
+- **On KDE Wayland it is KWin's titlebar, not ours — since tao 0.36 it had to be.** Before that, tao drew its own
+  client-side headerbar (tao PR #979) on every Wayland desktop: the decoration matched nothing on KDE, and its click
+  handling stopped responding after the window had been hidden and shown again — the "toggle maximise to make the
+  three buttons clickable" report (upstream tao#1299, tauri#15460, tauri#11856; this app builds its window hidden and
+  shows it, which is the exact trigger). tao PR #1218 reverted the custom headerbar and asks the compositor for
+  decorations instead. Measured on KDE Plasma 6 / Wayland with tao 0.37.1 (tauri 2.12.1): KWin frames the window
+  itself — frame 898×772 around a client surface of 890×738, so a 34 px compositor-drawn titlebar — where the old tao
+  drew the headerbar inside the client. The three buttons are KWin's own widgets, serviced by the compositor rather
+  than this process. X11 was never affected: the window manager always drew the titlebar there.
 - **arboard cannot use the Wayland clipboard, and it does not matter.** Every launch on GNOME Wayland warns that neither
   `ext-data-control` nor `wlr-data-control` is supported — mutter implements neither — and falls back to X11. **Copy
   Current URL** still lands in a Wayland application's paste buffer, verified by pasting one. Do not go hunting a

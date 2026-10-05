@@ -134,7 +134,9 @@ struct Job {
 /// tray's Test Notification is a menu handler. That is also the thread that
 /// draws and services the window's own close, minimise and maximise buttons --
 /// mutter gives Wayland clients no server-side titlebar, so GTK draws them in
-/// this process -- so showing a notification there stalls them. Measured against
+/// this process (on KDE the compositor draws them instead -- see Notes.md --
+/// but it is still the one thread that stalls) -- so showing a notification
+/// there stalls them. Measured against
 /// gnome-shell 50.1 over 25 calls: median 48 ms, max 520 ms, and a burst of
 /// messages compounds it. See the titlebar entry in `docs/Notes.md`.
 ///
@@ -196,6 +198,21 @@ fn deliver(app: &AppHandle, id: u32, title: &str, body: Option<&str>) {
         // Matches the `Icon=` key in the installed .desktop entry. Falls back to
         // the daemon's default when running unpackaged.
         .icon("google-chat-tauri")
+        // Names the installed .desktop entry (product name, so the id is
+        // "Google Chat") instead of staying anonymous. Without it the desktop
+        // files the notification under a generic event that plays no sound and
+        // has no per-app settings to fix that -- which is why the only sound a
+        // KDE user ever heard was the page's own, played by the webview, and it
+        // went silent whenever the window had been hidden. With it, the app
+        // shows up under System Settings -> Notifications -> Application
+        // Settings, and the `sound_name` below plays on the daemon's side,
+        // however long the app has sat hidden. Measured against Plasma 6;
+        // see the sound entry in `docs/Notes.md`.
+        .hint(notify_rust::Hint::DesktopEntry("Google Chat".into()))
+        // The freedesktop sound-theme name for an incoming instant message. A
+        // desktop without that sound, or without a daemon that plays sounds at
+        // all, ignores it and is no worse off than before.
+        .sound_name("message-new-instant")
         // Chat notifications are transient; let the daemon time them out.
         .hint(notify_rust::Hint::Category("im.received".into()));
 

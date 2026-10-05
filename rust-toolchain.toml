@@ -10,6 +10,6 @@
 # the working directory, and every cargo command here runs from the root with
 # `--manifest-path src-tauri/Cargo.toml`. In src-tauri/ it would be ignored.
 [toolchain]
-channel = "1.89"
+channel = "1.90"
 components = ["rustfmt", "clippy"]
 profile = "minimal"
