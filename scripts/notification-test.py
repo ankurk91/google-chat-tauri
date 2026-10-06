@@ -16,11 +16,9 @@ a pass or a fail, and says so.
 Clicking the popup is not automated: Cinnamon draws notifications inside the
 compositor, so there is no X window to target.
 
-The same fired notification is also checked for the D-Bus hints the desktop
-needs -- `desktop-entry` naming the installed .desktop entry and `suppress-sound`
-to keep the popup silent (the page plays its own sound) -- by capturing the
-session bus with dbus-monitor while it goes out. Whether the daemon then keeps
-its silence needs ears; see docs/Notes.md.
+The fired notification is also checked on the bus for the `desktop-entry` and
+`suppress-sound` hints, via dbus-monitor. Whether the daemon then keeps its
+silence needs ears; see docs/Notes.md.
 
 Requires Linux/X11 and python-xlib. On a Wayland session the pointer check is
 advisory only -- see `watch_pointer`.
@@ -41,13 +39,9 @@ LOG = pathlib.Path("/tmp/gchat-notification-test.log")
 BUS = pathlib.Path("/tmp/gchat-notification-test.bus")
 SETTLE = 18  # comfortably past the daemon's default notification timeout
 
-# Each hint the app must send: how it should render in the dbus-monitor
-# capture, and the source fragment that is supposed to produce it. Fragments,
-# not bare values, for the staleness check -- "Google Chat" is also the
-# appname, which predates the hint, so a value-only check would pass with the
-# hint deleted. A renamed or removed hint must fail loudly in `check_marker`,
-# not pass vacuously. Note the renderings are verbatim capture lines: a string
-# hint prints as `string "..."`, a boolean as `boolean true`.
+# Each hint: how it renders in the dbus-monitor capture, and the source
+# fragment that produces it (checked in `check_marker`, so a removed or
+# renamed hint fails loudly instead of passing vacuously).
 HINTS = {
     "desktop-entry": {
         "on_bus": 'string "Google Chat"',
@@ -136,14 +130,10 @@ def watch_pointer(seconds):
 
 
 def watch_bus():
-    """Record the session-bus traffic while a notification goes out.
+    """Capture session-bus Notify traffic. None when dbus-monitor is missing.
 
-    Returns the monitor process (already running) or None when dbus-monitor is
-    not installed. Scoping the match rule to the daemon's Notify method keeps
-    the capture small; a notification some *other* app fires inside the same
-    window would be captured too, so the check is only as trustworthy as the
-    machine is quiet. In text mode, because the file doubles as something a
-    human can open when a check fails.
+    Scoped to the daemon's Notify method; a notification another app fires
+    inside the same window would be captured too, so the machine must be quiet.
     """
     try:
         return subprocess.Popen(
@@ -178,8 +168,7 @@ def main():
     proc = subprocess.Popen(
         [str(BIN)], stdout=open(LOG, "w"), stderr=subprocess.STDOUT, start_new_session=True
     )
-    # Capture the session bus while the notification goes out, so the hints can
-    # be read off the wire rather than assumed.
+    # Capture the bus while the notification goes out.
     bus = watch_bus()
     try:
         print("waiting for the app to come up...")

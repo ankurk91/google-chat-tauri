@@ -136,9 +136,8 @@ later, and one of these was wrong for exactly that reason.
   descriptors rather than memory. Everything returned to 44 the moment the tray was cleared — **not a leak**, an
   unbounded cost for being away from the desk while a channel is busy. The realistic trigger is an overnight backlog,
   not a hostile page.
-- **Plasma plays no sound for an app it cannot identify.** The event an anonymous notification lands in —
-  `[Event/notification]` in `/usr/share/knotifications6/plasma_workspace.notifyrc` on Plasma 6 — is `Action=Popup`
-  with no `Sound=`. See Workarounds.md for the hints that answer it.
+- **Plasma plays no sound for an anonymous notification.** Its event on Plasma 6 is `Action=Popup` with no `Sound=`;
+  the `desktop-entry` hint fixes it. See Workarounds.md.
 
 ## Keyboard and menus
 
@@ -240,8 +239,7 @@ later, and one of these was wrong for exactly that reason.
   the waiter-thread cost in `features::notifications` by design, and dismissing any one of them would make the number
   wrong.
 - **The Linux tray's click events come from tray-icon's ksni backend, not the default one.** libappindicator delivers
-  none and always reports `ItemIsMenu=true`; ksni reports `false`, so a left click arrives as a real `TrayIconEvent`.
-  See Workarounds.md.
+  none; ksni delivers a real `TrayIconEvent` on left click. See Workarounds.md.
 - **A minimised window cannot be deiconified on Cinnamon.** `unminimize()` reaches `gtk_window_deiconify` and the window
   stays iconic however often it is asked — measured, `WM_STATE` never leaves 3. And tao refuses to focus a window it
   still believes is minimised, learning otherwise only when the window manager confirms the deiconify, which is after
@@ -268,8 +266,8 @@ later, and one of these was wrong for exactly that reason.
   services them on the GTK main loop — confirmed under gdb: thread 1 is `ppoll` → `g_main_context_iteration` →
   `gtk_main_iteration_do` → tao's `event_loop.rs`. The page renders in a separate `WebKitWebProcess` and keeps working
   meanwhile, which is why a blocked main thread reads as "the buttons are broken" rather than "the app is busy".
-  `set_unread_count` and the tray menu handler still block it; measure before assuming they are free. On KDE Wayland
-  the titlebar is the compositor's (server-side decorations, via tao ≥ 0.36), so this applies to GNOME's mutter only.
+  `set_unread_count` and the tray menu handler still block it; measure before assuming they are free. KDE Wayland draws
+  its titlebar server-side, so this applies to GNOME only.
 - **arboard cannot use the Wayland clipboard, and it does not matter.** Every launch on GNOME Wayland warns that neither
   `ext-data-control` nor `wlr-data-control` is supported — mutter implements neither — and falls back to X11. **Copy
   Current URL** still lands in a Wayland application's paste buffer, verified by pasting one. Do not go hunting a
