@@ -67,13 +67,9 @@ tauri-plugin-notification = "2"
 # as mobile-only. Talking to the freedesktop daemon ourselves gets that back.
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = "4"
-# Left-click on the tray must toggle the window, but Tauri's default Linux tray
-# backend (libappindicator) never delivers click events -- any click just opens
-# the menu. tray-icon's ksni backend serves the StatusNotifierItem itself and
-# does deliver Activate, and its platform_impl wins over libappindicator
-# whenever the `ksni` feature is on. Declared here only to enable that feature
-# (Tauri turns `libappindicator` on and Cargo has no way to turn one off); the
-# app never calls tray-icon directly. See `features::tray` and Workarounds.
+# Declared only to enable its `ksni` feature: the default Linux tray backend
+# (libappindicator) delivers no click events, ksni does. The app never calls
+# tray-icon. See `features::tray` and Workarounds.md.
 tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
 # The camera and mic are granted by answering WebKitWebView::permission-request,
 # which Tauri never connects; see `features::media`. Tauri hands out the

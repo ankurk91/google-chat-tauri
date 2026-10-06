@@ -132,12 +132,10 @@ slots come back as the user works through the tray — a burst of 60 still gave 
 
 ### Every notification names its desktop entry and asks for silence
 
-`deliver` sends `desktop-entry: "Google Chat"` and `suppress-sound` on every notification. The popup carries no sound
-of its own: the page plays one on every notification, and a daemon sound on top of it delivered two notes per message.
-With `desktop-entry` but without the silence request, the daemon would pick its default sound. The value must keep
-matching the installed desktop file's name, which Tauri derives from `productName` — the same coupling the badge
-relies on. A desktop that ignores `suppress-sound` leaves the double sound where it was, and the per-app settings it
-unlocks let the user silence the daemon by hand.
+`deliver` sends `desktop-entry: "Google Chat"` and `suppress-sound`. The first unlocks per-app settings (System Settings
+→ Notifications) and must keep matching the installed desktop file's name, which Tauri derives from `productName` — the
+same coupling the badge relies on. The second exists because the page plays its own sound and a daemon sound on top
+delivered two notes per message.
 
 ### The click-waiter thread is named explicitly
 
@@ -331,14 +329,13 @@ place and writes every line twice.
 
 ### The tray-icon dependency exists only for its `ksni` feature
 
-Left-click-to-toggle needs click events, which the default libappindicator backend never delivers; the ksni backend
-does, and having the feature on makes tray-icon compile it in. Cargo can only turn features on, never off, so the
-direct dependency exists to enable the feature and nothing else — the app never calls tray-icon.
+Click events: libappindicator delivers none, ksni does. Cargo can only turn features on, so a direct dependency is the
+only way to enable it; the app never calls tray-icon.
 
 ### The tray's About is a regular item on Linux
 
-The ksni menu snapshot renders predefined items other than separators as disabled blanks, so on Linux About is an
-ordinary `MenuItem` whose handler opens a message dialog. macOS and Windows keep the predefined item.
+The ksni menu snapshot renders predefined items (except separators) as disabled blanks, so About is an ordinary
+`MenuItem` opening a message dialog. macOS and Windows keep the predefined item.
 
 ## Deliberately not built
 

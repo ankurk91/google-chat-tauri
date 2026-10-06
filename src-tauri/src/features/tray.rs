@@ -37,11 +37,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let separator = PredefinedMenuItem::separator(app)?;
     items.push(&separator);
 
-    // The ksni menu snapshot renders predefined items other than separators as
-    // disabled blanks (tray-icon's ksni/menu.rs carries a TODO for it), so on
-    // Linux the About entry is a regular item whose handler opens the dialog
-    // itself -- see `show_about_dialog`. Elsewhere the predefined About shows
-    // the platform dialog, icon and all.
+    // ksni renders predefined items other than separators as disabled blanks,
+    // so on Linux About is a regular item -- see `show_about_dialog`.
     #[cfg(target_os = "linux")]
     let about = MenuItem::with_id(app, "about", "About", true, None::<&str>)?;
     #[cfg(not(target_os = "linux"))]
@@ -59,11 +56,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .icon(icons::decode(icons::initial())?)
         .tooltip("Google Chat")
         .menu(&menu)
-        // Windows and Linux toggle on left click: both tray backends deliver
-        // real click events. On Linux that needs the ksni backend -- see the
-        // dependency note in Cargo.toml -- because libappindicator, the
-        // default, delivers none. macOS keeps the convention of a menu on
-        // left click.
+        // Linux clicks need the ksni backend -- see the Cargo.toml note.
+        // macOS keeps the menu-on-left-click convention.
         .show_menu_on_left_click(cfg!(target_os = "macos"))
         .on_menu_event(|app, event| match event.id.as_ref() {
             "toggle" => toggle_window(app),
@@ -96,8 +90,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            // Left-click-to-toggle on Windows and Linux; on macOS a left click
-            // should open the menu.
+            // macOS opens the menu on left click; Windows and Linux toggle.
             if cfg!(target_os = "macos") {
                 return;
             }
@@ -140,13 +133,8 @@ fn toggle_window(app: &AppHandle) {
     }
 }
 
-/// The tray's About entry, as a dialog of our own.
-///
-/// Only ever reached on Linux, where the tray menu travels to the desktop as a
-/// snapshot and the snapshot renders a predefined About as a disabled blank --
-/// see the comment at its item above. The window menu's Help -> About keeps
-/// muda's full dialog, icon and license and all, which the GTK menu bar
-/// handles natively.
+/// The tray's About dialog, Linux-only: the ksni menu snapshot renders the
+/// predefined About as a disabled blank. The window menu keeps muda's full one.
 fn show_about_dialog(app: &AppHandle) {
     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
