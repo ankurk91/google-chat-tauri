@@ -32,6 +32,13 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         // Zoom is handled in chat.js instead, so the level can be persisted;
         // wry's built-in hotkeys would bypass that.
         .zoom_hotkeys_enabled(false)
+        // Tauri's native handler claims every file drop to emit its own event,
+        // so the page never sees one and dropping a file on a conversation
+        // does nothing. Nothing here listens for that event; Chat's own drop
+        // zone is the one that should get it. On Linux the drop then reaches
+        // the page without its file, a WebKitGTK bug -- see Notes.
+        // https://github.com/ankurk91/google-chat-tauri/issues/9
+        .disable_drag_drop_handler()
         .user_agent(&crate::features::user_agent::spoofed())
         .initialization_script(crate::inject::SCRIPT)
         .on_navigation(crate::features::external_links::navigation_guard)

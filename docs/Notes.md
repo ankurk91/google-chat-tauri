@@ -76,6 +76,15 @@ later, and one of these was wrong for exactly that reason.
   owns the clipboard and whether or not `javascript-can-access-clipboard` is on. `navigator.clipboard.read()` called from
   inside a real Ctrl+V returns the image as `image/png` without any permission prompt; called with no user gesture it is
   refused with `NotAllowedError`.
+- **A file dropped on the window never reaches the page as a file.** Tauri's drag-drop handler is on by default and
+  claims the drop to emit its own event, so the page gets no `drop` at all — on every platform, issue #9. With it
+  disabled, measured on Mint 22.3 / WebKitGTK 2.52.6 dropping an image from Nemo: the page gets `dragenter` and `drop`,
+  but `dataTransfer` holds `files=0` and only `text/uri-list` and `text/html`, so Chat ignores it and the composer
+  pastes the file's path as text. That is a WebKit regression, not ours: since 303828@main
+  `DataTransfer::allowsFileAccess()` is false on every port but Cocoa
+  ([WebKit bug 323277](https://bugs.webkit.org/show_bug.cgi?id=323277), and
+  [320301](https://bugs.webkit.org/show_bug.cgi?id=320301) for the same in Epiphany). Disabling the handler is still
+  what macOS and Windows need; on Linux, attach through the upload button until a WebKitGTK release carries the fix.
 - **The camera and mic are refused until the host says yes.** WebKitGTK routes `getUserMedia` through
   `permission-request`, and wry 0.55 connects nothing to it. Measured in the app: `enumerateDevices` listed the devices,
   `getUserMedia` failed at once with `NotAllowedError` and no prompt; with the request allowed, both tracks opened and
