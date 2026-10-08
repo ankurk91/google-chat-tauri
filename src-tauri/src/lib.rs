@@ -164,7 +164,17 @@ pub fn run() {
             let window = features::window::create(handle)?;
 
             app.set_menu(features::app_menu::build(handle)?)?;
-            features::tray::create(handle)?;
+            // Not fatal: the Linux tray needs a StatusNotifierWatcher on the
+            // session bus, which vanilla GNOME and plain X11 panels lack. The
+            // window then minimises instead of hiding -- see
+            // `close_to_tray::hide`.
+            let has_tray = match features::tray::create(handle) {
+                Ok(()) => true,
+                Err(e) => {
+                    log::warn!("tray unavailable, closing will minimise instead: {e}");
+                    false
+                }
+            };
             features::close_to_tray::attach(&window);
 
             // Windows dispatches menu accelerators from tao's message loop,
@@ -184,7 +194,8 @@ pub fn run() {
                 let _ = window.set_zoom(prefs.zoom);
             }
 
-            if !hidden {
+            // Starting hidden with no tray would leave nothing to click.
+            if !hidden || !has_tray {
                 window.show()?;
             }
 

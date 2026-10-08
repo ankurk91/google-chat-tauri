@@ -305,3 +305,7 @@ later, and one of these was wrong for exactly that reason.
   `smoke-test.py` and `reset-test.py` pin the app with `GDK_BACKEND=x11`, which on a Wayland session means XWayland;
   they test the X11 path only, and the native Wayland path has to be checked by hand. `smoke-test.py` also runs in a
   sandbox profile, or the developer's own `start_hidden` leaves no window to find and the failure looks identical.
+- **A private session bus stalls startup for 25 seconds.** `dbus-run-session` is the quick way to run the app with no
+  StatusNotifierWatcher, but GTK's application registration waits out a portal proxy on the fresh bus before Tauri
+  reaches `setup` — measured under gdb, `g_application_register` → `g_dbus_proxy_new_sync`, 25s timeout. Give the run
+  a minute; a shorter `timeout` kills it silently, with no log line, before anything under test has run.

@@ -3,10 +3,27 @@
 //! Closing the window hides it instead of quitting; the app only really exits
 //! via the tray's Quit item, which sets the `quitting` flag first.
 
-use tauri::{Manager, WebviewWindow, WindowEvent};
+use tauri::{AppHandle, Manager, WebviewWindow, WindowEvent};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+use crate::features::tray;
 use crate::state::AppState;
+
+/// Hide the window to the tray -- or minimise it when there is no tray to
+/// bring it back from, which on Linux means no StatusNotifierWatcher on the
+/// bus (see Workarounds.md). A hidden window with no tray is lost until the
+/// app is launched again.
+pub fn hide(app: &AppHandle, window: &WebviewWindow) {
+    if app.tray_by_id(tray::ID).is_none() {
+        let _ = window.minimize();
+        return;
+    }
+
+    #[cfg(target_os = "macos")]
+    let _ = app.hide();
+    #[cfg(not(target_os = "macos"))]
+    let _ = window.hide();
+}
 
 pub fn attach(window: &WebviewWindow) {
     let window = window.clone();
@@ -32,9 +49,6 @@ pub fn attach(window: &WebviewWindow) {
             log::warn!("failed to save window state on hide: {e}");
         }
 
-        #[cfg(target_os = "macos")]
-        let _ = app.hide();
-        #[cfg(not(target_os = "macos"))]
-        let _ = window.hide();
+        hide(app, &window);
     });
 }

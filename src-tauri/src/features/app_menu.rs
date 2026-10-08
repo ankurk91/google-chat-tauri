@@ -241,12 +241,7 @@ pub fn handle(app: &AppHandle, id: &str) {
     };
 
     match id {
-        "close-to-tray" => {
-            #[cfg(target_os = "macos")]
-            let _ = app.hide();
-            #[cfg(not(target_os = "macos"))]
-            let _ = window.hide();
-        }
+        "close-to-tray" => crate::features::close_to_tray::hide(app, &window),
         // Linux only -- elsewhere Undo/Redo are predefined items the platform
         // handles itself, and never reach this match.
         "undo" => {
