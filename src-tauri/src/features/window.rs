@@ -16,7 +16,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     WebviewWindowBuilder::new(app, MAIN, WebviewUrl::External(url))
         .title("Google Chat")
         .inner_size(800.0, 600.0)
-        .min_inner_size(480.0, 570.0)
+        // Logical pixels, so the floor grows with display scaling. 400 lets the
+        // whole window fit 540px on a 1080p screen, frame included.
+        // https://github.com/ankurk91/google-chat-tauri/issues/11
+        .min_inner_size(480.0, 400.0)
         .center()
         // Shown by the caller once setup is done, mirroring electron's
         // `show: false` + `ready-to-show`.
