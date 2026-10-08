@@ -13,6 +13,11 @@ dist/
 # generated app icons (regenerate with: pnpm tauri icon)
 /src-tauri/icons/source-1024.png
 
+# Python bytecode, written next to the harnesses in scripts/ whenever one is
+# imported or run.
+__pycache__/
+*.py[cod]
+
 # Editors and IDEs
 .vscode/
 !.vscode/extensions.json
