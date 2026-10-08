@@ -337,6 +337,14 @@ only way to enable it; the app never calls tray-icon.
 The ksni menu snapshot renders predefined items (except separators) as disabled blanks, so About is an ordinary
 `MenuItem` opening a message dialog. macOS and Windows keep the predefined item.
 
+### A missing tray is not fatal, and closing then minimises
+
+ksni registers with a StatusNotifierWatcher on the session bus and fails outright when there is none — vanilla GNOME
+without the AppIndicator extension, XEmbed-only panels, or an autostart that beats the panel to the bus. tray-icon gives
+no way to ask ksni to wait for one. Without the `match` in `setup` the app would not start at all. With no tray,
+`close_to_tray::hide` minimises instead of hiding and `--hidden` is ignored, since a hidden window with no tray has no
+way back.
+
 ## Deliberately not built
 
 Auto-update that installs itself, and a spellchecker toggle, for which Tauri exposes no API.
