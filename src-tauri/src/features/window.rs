@@ -18,7 +18,6 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .inner_size(800.0, 600.0)
         // Logical pixels, so the floor grows with display scaling. 400 lets the
         // whole window fit 540px on a 1080p screen, frame included.
-        // https://github.com/ankurk91/google-chat-tauri/issues/11
         .min_inner_size(480.0, 400.0)
         .center()
         // Shown by the caller once setup is done, mirroring electron's
@@ -37,7 +36,6 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         // does nothing. Nothing here listens for that event; Chat's own drop
         // zone is the one that should get it. On Linux the drop then reaches
         // the page without its file, a WebKitGTK bug -- see Notes.
-        // https://github.com/ankurk91/google-chat-tauri/issues/9
         .disable_drag_drop_handler()
         .user_agent(&crate::features::user_agent::spoofed())
         .initialization_script(crate::inject::SCRIPT)
