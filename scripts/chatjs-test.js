@@ -431,6 +431,63 @@ console.log('[6/9] keyboard shortcuts');
 
   press('+', { ctrl: true, shift: true });
   check('accepts Ctrl+Shift+= as zoom in', actions().length === before + 1);
+
+  const before2 = actions().length;
+  press('[', { meta: true });
+  press(']', { meta: true });
+  press('H', { meta: true, shift: true });
+  check('keeps the macOS history keys off Linux and Windows', actions().length === before2);
+}
+
+/*
+ * Option+Left/Right is how macOS moves the caret by a word. The listener runs
+ * in the capture phase, so claiming those keys took word movement away from
+ * the composer -- the reported bug. macOS gets Safari's Cmd+[ / Cmd+] instead.
+ */
+{
+  const { document, calls } = load({ navigator: { platform: 'MacIntel' } });
+  let prevented = 0;
+  const press = (key, mods = {}) =>
+    fire(document, 'keydown', {
+      key,
+      ctrlKey: !!mods.ctrl,
+      metaKey: !!mods.meta,
+      altKey: !!mods.alt,
+      shiftKey: !!mods.shift,
+      preventDefault: () => prevented++,
+      stopPropagation: () => {}
+    });
+  const actions = () => calls.filter((c) => c.command === 'menu_action').map((c) => c.args.action);
+
+  press('ArrowLeft', { alt: true });
+  press('ArrowRight', { alt: true });
+  press('ArrowLeft', { alt: true, shift: true });
+  press('Home', { alt: true });
+  check(
+    'leaves Option+arrows to the text field on macOS',
+    actions().length === 0 && prevented === 0,
+    `${actions().join(',')} prevented ${prevented}`
+  );
+
+  press('[', { meta: true });
+  press(']', { meta: true });
+  // Shift makes the key arrive upper-case.
+  press('H', { meta: true, shift: true });
+  check(
+    'uses Cmd+[ / Cmd+] / Cmd+Shift+H for history on macOS',
+    JSON.stringify(actions()) === JSON.stringify(['back', 'forward', 'home']),
+    actions().join(',')
+  );
+
+  const before = actions().length;
+  press('[', { ctrl: true });
+  press('[', { meta: true, alt: true });
+  press('h', { meta: true });
+  check('ignores near misses of the macOS history keys', actions().length === before, actions().join(','));
+
+  press('=', { meta: true });
+  press('w', { meta: true });
+  check('still zooms and hides with Cmd on macOS', actions().slice(before).join(',') === 'zoom-in,close-to-tray');
 }
 
 /*

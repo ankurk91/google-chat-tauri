@@ -425,6 +425,34 @@
     return true;
   }
 
+  /* History keys differ by platform, as they do on the menu items in
+   * `app_menu.rs`. On macOS Option+Left/Right moves the caret a word, and this
+   * listener runs in the capture phase -- so claiming them there took word
+   * movement away from the composer and went back a conversation instead.
+   * macOS gets Safari's keys: Cmd+[ and Cmd+] mean nothing to a text field.
+   * `navigator.platform` rather than the user agent, which is spoofed. */
+  const onMac = /Mac/.test(navigator.platform);
+
+  function historyShortcutFor(event, key) {
+    if (onMac) {
+      if (!event.metaKey || event.ctrlKey || event.altKey) return null;
+      if (!event.shiftKey && key === '[') return 'back';
+      if (!event.shiftKey && key === ']') return 'forward';
+      if (event.shiftKey && key === 'h') return 'home';
+      return null;
+    }
+
+    if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      if (key === 'arrowleft') return 'back';
+      if (key === 'arrowright') return 'forward';
+      // Alt+Home is declared on the History menu item, and a menu accelerator
+      // never arrives while focus is in the webview -- so without this line it
+      // is a shortcut the menu advertises and nothing answers.
+      if (key === 'home') return 'home';
+    }
+    return null;
+  }
+
   function shortcutFor(event) {
     const mod = event.ctrlKey || event.metaKey;
     const key = String(event.key).toLowerCase();
@@ -439,15 +467,7 @@
     // Ctrl+Shift+= is how "+" arrives on many layouts.
     if (mod && event.shiftKey && !event.altKey && (key === '+' || key === '=')) return 'zoom-in';
 
-    if (event.altKey && !mod && !event.shiftKey) {
-      if (key === 'arrowleft') return 'back';
-      if (key === 'arrowright') return 'forward';
-      // Alt+Home is declared on the History menu item, and a menu accelerator
-      // never arrives while focus is in the webview -- so without this line it
-      // is a shortcut the menu advertises and nothing answers.
-      if (key === 'home') return 'home';
-    }
-    return null;
+    return historyShortcutFor(event, key);
   }
 
   function installShortcuts() {

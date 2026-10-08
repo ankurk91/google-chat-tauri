@@ -36,7 +36,8 @@ longer maintained, was 66 MB.
 - **Starts how you like** — optionally launch at login, and start hidden in the tray on any launch rather than opening a
   window. Both under **Preferences**.
 - **Keyboard shortcuts** — `Ctrl+F` to search, `Ctrl` `+`/`-`/`0` to zoom,
-  `Alt+←`/`Alt+→` to go back and forward, `Alt+Home` to return to Chat, `Ctrl+W` to hide to the tray.
+  `Alt+←`/`Alt+→` to go back and forward, `Alt+Home` to return to Chat, `Ctrl+W` to hide to the tray. On macOS, `Cmd`
+  stands in for `Ctrl`, and history is `Cmd+[`/`Cmd+]` and `Cmd+Shift+H`, leaving `Option+←`/`→` to move by word.
 - **Links open in your browser** — a Docs, Sheets, Drive or Calendar link someone shares opens in your real browser,
   with your extensions and your other tabs. Only Chat itself stays in this window.
 - **Attachments download through your browser** — clicking one hands the link to your browser, which saves it the way it

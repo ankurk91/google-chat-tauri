@@ -130,21 +130,29 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     }
     let view = view.build()?;
 
+    // Option+Left/Right is word-by-word cursor movement on macOS, so binding
+    // history to it there broke editing in the composer. Safari's keys instead.
+    // Keep these in step with `shortcutFor` in chat.js.
+    let (back_key, forward_key, home_key) = if cfg!(target_os = "macos") {
+        ("Cmd+[", "Cmd+]", "Cmd+Shift+H")
+    } else {
+        ("Alt+Left", "Alt+Right", "Alt+Home")
+    };
     let history = SubmenuBuilder::new(app, "History")
         .item(
             &MenuItemBuilder::with_id("back", "Back")
-                .accelerator("Alt+Left")
+                .accelerator(back_key)
                 .build(app)?,
         )
         .item(
             &MenuItemBuilder::with_id("forward", "Forward")
-                .accelerator("Alt+Right")
+                .accelerator(forward_key)
                 .build(app)?,
         )
         .separator()
         .item(
             &MenuItemBuilder::with_id("home", "Go to Chat")
-                .accelerator("Alt+Home")
+                .accelerator(home_key)
                 .build(app)?,
         )
         .build()?;
