@@ -70,7 +70,7 @@ notify-rust = "4"
 # Declared only to enable its `ksni` feature: the default Linux tray backend
 # (libappindicator) delivers no click events, ksni does. The app never calls
 # tray-icon. See `features::tray` and Workarounds.md.
-tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
 # The camera and mic are granted by answering WebKitWebView::permission-request,
 # which Tauri never connects; see `features::media`. Tauri hands out the
 # WebKitWebView typed with this crate, so the version has to be the one Tauri
