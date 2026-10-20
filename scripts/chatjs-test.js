@@ -67,6 +67,7 @@ function load({
 
   const windowListeners = {};
   const intervals = [];
+  const timeouts = [];
 
   const window = {
     top: null,
@@ -84,6 +85,8 @@ function load({
     },
     setInterval: (fn) => intervals.push(fn),
     clearInterval: () => {},
+    // Queued, like rAF below, so a test decides when a scheduled read happens.
+    setTimeout: (fn) => timeouts.push(fn),
     open: function nativeOpen() {},
     ServiceWorkerRegistration: function () {},
     __TAURI_INTERNALS__: {
@@ -159,8 +162,51 @@ function load({
     }
   };
 
+  // The unread watcher, cut down to what a test needs to see: what each
+  // observer is aimed at, and a way to tell it something changed.
+  const observers = [];
+  context.MutationObserver = class MutationObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.targets = [];
+      observers.push(this);
+    }
+    observe(target, options) {
+      this.targets.push({ target, options });
+    }
+    disconnect() {
+      this.targets = [];
+    }
+    fire() {
+      this.callback([], this);
+    }
+  };
+  const runTimeouts = () => timeouts.splice(0).forEach((fn) => fn());
+
+  // Real time plus whatever a test has skipped ahead, so code that measures a
+  // budget still sees the clock move by itself.
+  let skipped = 0;
+  context.Date = class extends Date {
+    static now() {
+      return super.now() + skipped;
+    }
+  };
+  const advance = (ms) => {
+    skipped += ms;
+  };
+
   vm.runInContext(fs.readFileSync(SCRIPT, 'utf8'), context, { filename: 'chat.js' });
-  return { window, document, calls, drainFrames, tick: () => intervals.forEach((fn) => fn()) };
+  return {
+    window,
+    document,
+    calls,
+    drainFrames,
+    observers,
+    timeouts,
+    runTimeouts,
+    advance,
+    tick: () => intervals.forEach((fn) => fn())
+  };
 }
 
 /** Fire a listener chat.js registered on `window` rather than on `document`. */
@@ -608,10 +654,15 @@ console.log('[6c/9] Ctrl+F where there is no search box');
 console.log('[6d/9] unread count from the sidebar');
 {
   const byId = {};
+  const container = { contains: (node) => sidebar.includes(node) || Object.values(byId).includes(node) };
   const section = (type, id, n) => {
     if (n !== null) byId[id] = { textContent: String(n) };
     const toggle = { getAttribute: () => `label-${id} ${id}` };
-    return { type, querySelector: (sel) => (/aria-labelledby/.test(sel) ? toggle : null) };
+    return {
+      type,
+      parentElement: container,
+      querySelector: (sel) => (/aria-labelledby/.test(sel) ? toggle : null)
+    };
   };
   // Shortcuts repeats the other two, so it must not be added in.
   let sidebar = [section('10', 'c1', 4), section('1', 'c27', 2), section('2', 'c35', '99+'), section('1', 'c40', null)];
@@ -625,16 +676,106 @@ console.log('[6d/9] unread count from the sidebar');
     }
   };
 
-  const { calls, tick } = load({ dom });
+  const { calls, tick, advance } = load({ dom });
   const sent = calls.filter((c) => c.command === 'set_unread_count').pop();
   check('adds up Direct messages and Spaces, not Shortcuts', !!sent && sent.args.count === 101,
     sent && `count=${sent.args.count}`);
 
   // The markup moves on: nothing matches, while the favicon still says unread.
+  // Only the slow rescan runs now, and it has to be enough to notice.
   sidebar = [];
-  for (let i = 0; i < 40; i++) tick();
+  for (let i = 0; i < 4; i++) {
+    advance(15000);
+    tick();
+  }
   const warned = calls.filter((c) => c.command === 'page_log' && /sidebar count read 0/.test(c.args.message));
   check('says once when the sidebar stops yielding a count', warned.length === 1, `${warned.length} warning(s)`);
+}
+
+/*
+ * When the count is read: on a change the watchers report, not on a clock.
+ * What matters as much is where they are aimed -- never at the whole page with
+ * text changes switched on, or every keystroke in the compose box is ours too.
+ */
+console.log('[6e/9] unread count, read on change');
+{
+  const byId = { n1: { textContent: '2' }, n2: { textContent: '0' } };
+  const container = { contains: (node) => sidebar.includes(node) || Object.values(byId).includes(node) };
+  const section = (type, id) => ({
+    type,
+    parentElement: container,
+    querySelector: () => ({ getAttribute: () => `label ${id}` })
+  });
+  let sidebar = [section('1', 'n1'), section('2', 'n2')];
+  const favicon = { href: 'https://www.gstatic.com/chat/favicon_dot_64px.png' };
+  const head = { children: [{}] };
+  const body = {
+    children: [{}],
+    querySelectorAll: (sel) => sidebar.filter((s) => sel.includes(`[data-section-type="${s.type}"]`))
+  };
+  const dom = {
+    head,
+    body,
+    querySelector: (sel) => (/icon/.test(sel) ? favicon : null),
+    getElementById: (id) => byId[id] || null
+  };
+
+  const { calls, observers, timeouts, runTimeouts, tick, advance, document, window } = load({ dom });
+  const counts = () => calls.filter((c) => c.command === 'set_unread_count').map((c) => c.args);
+  const aimedAt = (target) => observers.find((o) => o.targets.some((t) => t.target === target));
+  const watchesPageText = () =>
+    observers.some((o) => o.targets.some((t) => t.target === body && t.options.characterData));
+
+  const headWatch = aimedAt(head);
+  const sidebarWatch = aimedAt(container);
+  check('watches the favicon through <head>', !!headWatch &&
+    headWatch.targets[0].options.attributeFilter.includes('href'));
+  check('watches the sidebar, not the page', !!sidebarWatch && !aimedAt(body) && !watchesPageText());
+
+  // A message arrives: Chat rewrites the badge, in a burst of mutations.
+  byId.n1.textContent = '3';
+  for (let i = 0; i < 10; i++) sidebarWatch.fire();
+  check('reads once for a burst of changes', timeouts.length === 1, `${timeouts.length} reads queued`);
+  advance(1000);
+  runTimeouts();
+  check('reports the new count', counts().pop().count === 3, JSON.stringify(counts().pop()));
+
+  // Read in another tab: Google swaps the favicon.
+  favicon.href = 'https://www.gstatic.com/chat/favicon_no_dot_64px.png';
+  byId.n1.textContent = '0';
+  headWatch.fire();
+  advance(1000);
+  runTimeouts();
+  check('follows the favicon', counts().pop().hasUnread === false, JSON.stringify(counts().pop()));
+
+  // Hidden to the tray: Chat takes the sidebar away.
+  sidebar = [];
+  favicon.href = 'https://www.gstatic.com/chat/favicon_dot_64px.png';
+  advance(15000);
+  tick();
+  check('the tray dot still follows the favicon while hidden', counts().pop().hasUnread === true);
+  const searching = aimedAt(body);
+  check('waits for a sidebar by watching the page for nodes, not text',
+    !!searching && !watchesPageText() && !aimedAt(container));
+
+  // Shown again: the sidebar is drawn anew and the page watcher sees it go in.
+  sidebar = [section('1', 'n1'), section('2', 'n2')];
+  byId.n2.textContent = '5';
+  searching.fire();
+  advance(1000);
+  runTimeouts();
+  check('picks the count back up when the sidebar returns', counts().pop().count === 5,
+    JSON.stringify(counts().pop()));
+  check('and narrows back onto it', !!aimedAt(container) && !aimedAt(body));
+
+  // Coming back from the tray is a read of its own, whoever else noticed.
+  fire(document, 'visibilitychange', {});
+  fireWindow(window, 'focus');
+  check('reads again when the window comes back', timeouts.length === 1, `${timeouts.length} reads queued`);
+  runTimeouts();
+
+  const idp = load({ origin: 'https://login.example.test', href: 'https://login.example.test/sso' });
+  check('watches nothing on a page that is not Chat', idp.observers.length === 0);
 }
 
 /*

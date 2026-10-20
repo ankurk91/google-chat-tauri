@@ -61,11 +61,35 @@ Chat does not render its navigation while the window is hidden, so the elements 
 absent and the count reads zero — precisely when the tray is the only thing the user can see. The favicon is driven by
 data rather than layout, and Google publishes matching `..._no_dot_` and `..._dot_` variants to swap between.
 
-That is also why the poller **must not be gated on page visibility**, which is the first thing it looks like it wants:
-a `querySelector` every second, most of them while nobody is looking at the window. But hidden is exactly when the
-favicon read is the only signal still working, and it is what keeps the tray icon honest. Gating on `document.hidden`
-would either switch the poll off in the one state it matters in, or — if the webview does not report a tray-hidden
-window as hidden — save nothing at all. Neither is worth having.
+That is also why the unread watcher **must not be gated on page visibility**, which is the first thing it looks like it
+wants: most of its work happens while nobody is looking at the window. But hidden is exactly when the favicon read is
+the only signal still working, and it is what keeps the tray icon honest. Gating on `document.hidden` would either
+switch it off in the one state it matters in, or — if the webview does not report a tray-hidden window as hidden — save
+nothing at all. Neither is worth having.
+
+### The unread count is watched, and still rescanned every 15 s
+
+The count used to be read once a second, which meant two `querySelectorAll` walks of the whole page every second for
+as long as the app ran — and a Chat page left open for a day has a very large DOM. `chat.js` now reads on change: one
+`MutationObserver` on `<head>` for the favicon, one on the sidebar for the count, a read burst coalesced and capped at
+one per second.
+
+Three things in it look redundant and are not:
+
+- **The sidebar observer is re-aimed after every read.** Chat removes the sidebar while the window is hidden and draws
+  a new one on show, so an observer left on the old subtree hears nothing, forever. Re-aiming costs a `disconnect` and
+  an `observe`.
+- **With no sidebar in the page, it watches `<body>` for added nodes — never for text.** That is how a sidebar drawn on
+  show is noticed within a second. Text changes are left out on purpose: an observer on the whole page with
+  `characterData` is handed every keystroke in the compose box, which is where Chat's main thread is already busiest
+  (measured at 87% while typing on a page open for hours). The same reason keeps the sidebar root from ever being
+  `<body>` itself.
+- **A 15 s rescan runs regardless.** It is the safety net for whatever the observers miss — a sidebar torn out above the
+  observed subtree, a badge that moved, a layout Google has redrawn again — and it is what drives the "favicon shows
+  unread but the sidebar count read 0" warning, which is now timed in seconds rather than counted in polls.
+
+Once an hour the rescan logs how many reads ran, the slowest, and how many elements the page holds, at `info`. That
+line is how to tell from a user's log whether the page itself is what grew.
 
 ### `withGlobalTauri` stays on
 

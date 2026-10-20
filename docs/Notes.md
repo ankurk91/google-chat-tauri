@@ -25,6 +25,12 @@ later, and one of these was wrong for exactly that reason.
   messages, 2 Spaces, 10 Shortcuts), and its header toggle's `aria-labelledby` names two ids, the label and then the
   count. The count read zero with the window in front — no dock badge, no title count — while the favicon-driven tray
   dot kept working, so nothing looked broken; `chat.js` now logs a warning when the two disagree for 30 s.
+- **Reading the unread count costs about 2 ms, and on demand it runs a fifteenth as often.** Measured 2026-10-20 on
+  Mint 22.3 / WebKitGTK 2.52.6, signed in, with the stats line cut to two minutes: idle, 9 reads per 2 min (the 15 s
+  rescan plus the odd change) against the old poll's 120; 24–25 while messages arrived and were read; the slowest read
+  2 ms on a page of 4,800–7,000 elements. A message moved the favicon dot and then the count within a second, window up
+  or in the tray. So the old poll was not expensive on a fresh page — about 0.2% of one core — and it does not explain
+  `WebKitWebProcess` growing to 3 GB over a day. That is Chat's own heap: anonymous memory, gone on a reload.
 - **WebKitGTK's failed-load page has no styling whatsoever.** It is built as `<html><body>%s</body></html>` and that is
   the whole template — confirmed by reading it out of the shipped `libwebkit2gtk-4.1`. Unstyled text is black, the
   window's `background_color` is Google's dark grey, so the one line explaining the failure renders black on black. wry

@@ -32,8 +32,6 @@
   // one of Google's embedded iframes.
   if (window.top !== window.self) return;
 
-  const POLL_MS = 1000;
-
   /* ---------------------------------------------------------- where we are */
 
   /* The origins the app is made of.
@@ -148,34 +146,43 @@
     'div[data-tooltip="Spaces"][role="group"]'
   ].join(',');
 
-  let sections = 0;
+  // What the last read found: the sections it added up, and the elements their
+  // counts were read from. The watcher below is aimed at these.
+  let sections = [];
+  let badges = [];
 
-  function sectionCount(section) {
+  function sectionBadge(section) {
     const toggle = section.querySelector('[role="button"][aria-labelledby][aria-controls]');
     const ids = toggle ? toggle.getAttribute('aria-labelledby').trim().split(/\s+/) : [];
-    const badge = ids.length > 1 ? document.getElementById(ids[ids.length - 1]) : null;
-    return badge ? parseInt(badge.textContent, 10) : NaN;
+    return ids.length > 1 ? document.getElementById(ids[ids.length - 1]) : null;
   }
 
-  function legacyCount(group) {
+  function legacyBadge(group) {
     const heading = group.querySelector('span[role="heading"]');
-    const badge = heading && heading.nextElementSibling;
-    return badge ? Number(badge.textContent) : NaN;
+    return heading && heading.nextElementSibling;
   }
 
   function readUnreadCount() {
+    sections = [];
+    badges = [];
     if (!document.body) return 0;
+
     let found = document.body.querySelectorAll(UNREAD_SECTIONS);
-    let read = sectionCount;
+    let badgeOf = sectionBadge;
+    let parse = (badge) => parseInt(badge.textContent, 10);
     if (found.length === 0) {
       found = document.body.querySelectorAll(LEGACY_SECTIONS);
-      read = legacyCount;
+      badgeOf = legacyBadge;
+      parse = (badge) => Number(badge.textContent);
     }
-    sections = found.length;
+    sections = Array.from(found);
 
     let total = 0;
-    for (const section of found) {
-      const count = read(section);
+    for (const section of sections) {
+      const badge = badgeOf(section);
+      if (!badge) continue;
+      badges.push(badge);
+      const count = parse(badge);
       if (!isNaN(count)) total += count;
     }
     return total;
@@ -202,26 +209,117 @@
     return /_dot_/.test(href) && !/_no_dot_/.test(href);
   }
 
+  /* When to read. Both signals are watched rather than polled: the favicon
+   * through <head>, the count through the part of the sidebar it was last
+   * found in. Watching is aimed narrowly on purpose -- an observer on the whole
+   * page would be handed every keystroke in the compose box, which is where
+   * Chat's main thread is already busiest.
+   *
+   * Chat removes the sidebar while the window is hidden and rebuilds it on
+   * show, and has redrawn its markup before, so a watcher can be left holding
+   * a subtree that is no longer in the page. Three things cover that: every
+   * read re-aims the watcher, a page with no sidebar is watched for nodes
+   * being added (no text changes) until one appears, and a slow rescan runs
+   * regardless. See Workarounds.md. */
+
+  const SETTLE_MS = 200; // let a burst of mutations land before reading
+  const MIN_GAP_MS = 1000; // and never more than once a second
+  const RESCAN_MS = 15000; // the safety net, for whatever the watchers miss
+  const MISMATCH_MS = 30000; // see `updateUnread`
+  const STATS_MS = 60 * 60 * 1000;
+
+  const CONTENT = { childList: true, subtree: true, characterData: true };
+
+  let readTimer = null;
+  let lastRead = 0;
+
+  function scheduleRead() {
+    if (readTimer !== null) return;
+    const wait = Math.max(SETTLE_MS, lastRead + MIN_GAP_MS - Date.now());
+    readTimer = setTimeout(() => {
+      readTimer = null;
+      updateUnread();
+    }, wait);
+  }
+
+  // Made by `watchUnread`, so a page that is not Chat never gets them.
+  let faviconWatch = null;
+  let sidebarWatch = null;
+  let watchedHead = null;
+
+  // The smallest element holding every section, starting one level up so that
+  // a lone section's siblings are inside it too and a new one arriving is seen.
+  function sidebarRoot() {
+    if (sections.length === 0) return null;
+    let root = sections[0].parentElement || sections[0];
+    while (root && !sections.every((section) => root.contains(section))) root = root.parentElement;
+    // A container that is the whole page would hear the compose box too.
+    if (!root || root === document.body || root === document.documentElement) return null;
+    return root;
+  }
+
+  // Re-aimed after every read, which is cheap and means a sidebar that Chat has
+  // rebuilt since is picked up on the next read rather than never. Records
+  // dropped by `disconnect` predate the read that just ran, so none is lost.
+  function aimWatchers() {
+    if (document.head && document.head !== watchedHead) {
+      faviconWatch.disconnect();
+      faviconWatch.observe(document.head, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['href', 'rel']
+      });
+      watchedHead = document.head;
+    }
+
+    sidebarWatch.disconnect();
+    const root = sidebarRoot();
+    if (root) sidebarWatch.observe(root, CONTENT);
+    // The count can live outside its section: it is found by id.
+    for (const badge of badges) {
+      if (!root || !root.contains(badge)) sidebarWatch.observe(badge, CONTENT);
+    }
+    if (!root && document.body) {
+      // No sidebar to aim at: wait for one to be added. Nodes only -- text
+      // changes are what typing makes, and none of them can add a section.
+      sidebarWatch.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
   let lastCount = -1;
   let lastHasUnread = null;
-  let misses = 0; // consecutive polls; Infinity once reported
+  let mismatchSince = 0; // 0 when the signals agree, Infinity once reported
 
-  function pollUnread() {
+  // How long a read takes on a page that has been open for hours, which is the
+  // number that says whether any of this is worth its complexity.
+  let stats = { since: Date.now(), reads: 0, slowest: 0 };
+
+  function updateUnread() {
+    const started = Date.now();
     const count = readUnreadCount();
+    lastRead = Date.now();
+    stats.reads++;
+    stats.slowest = Math.max(stats.slowest, lastRead - started);
+
+    aimWatchers();
+
     let hasUnread = readHasUnread();
     if (hasUnread === null) hasUnread = lastHasUnread === null ? count > 0 : lastHasUnread;
 
     // The favicon says unread, the window is on screen, yet the sidebar gave
     // no number: the markup has moved again. Say so once, or the dock badge
-    // and the title count just quietly stop. Thirty polls in a row, so a page
-    // still drawing its sidebar does not count.
+    // and the title count just quietly stop. Only after thirty seconds of it,
+    // so a page still drawing its sidebar does not count.
     if (hasUnread && count === 0 && !document.hidden) {
-      if (++misses === 30) {
-        log('warn', `unread: favicon shows unread but the sidebar count read 0 (${sections} section(s) matched)`);
-        misses = Infinity;
+      if (mismatchSince === 0) {
+        mismatchSince = lastRead;
+      } else if (mismatchSince !== Infinity && lastRead - mismatchSince >= MISMATCH_MS) {
+        log('warn', `unread: favicon shows unread but the sidebar count read 0 (${sections.length} section(s) matched)`);
+        mismatchSince = Infinity;
       }
-    } else if (misses !== Infinity) {
-      misses = 0;
+    } else if (mismatchSince !== Infinity) {
+      mismatchSince = 0;
     }
 
     if (count === lastCount && hasUnread === lastHasUnread) return;
@@ -229,6 +327,30 @@
     lastHasUnread = hasUnread;
 
     invoke('set_unread_count', { count, hasUnread }).catch(ignore);
+  }
+
+  function rescan() {
+    updateUnread();
+
+    const now = Date.now();
+    if (now - stats.since < STATS_MS) return;
+    const nodes = document.getElementsByTagName ? document.getElementsByTagName('*').length : -1;
+    log('info', `unread: ${stats.reads} reads in ${Math.round((now - stats.since) / 60000)} min, ` +
+      `slowest ${stats.slowest} ms, page has ${nodes} elements`);
+    stats = { since: now, reads: 0, slowest: 0 };
+  }
+
+  function watchUnread() {
+    faviconWatch = new MutationObserver(scheduleRead);
+    sidebarWatch = new MutationObserver(scheduleRead);
+    updateUnread();
+    setInterval(rescan, RESCAN_MS);
+
+    // A document-start boot has no body yet, so nothing to aim at; and a
+    // window coming back from the tray is when Chat redraws the sidebar.
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleRead);
+    document.addEventListener('visibilitychange', scheduleRead);
+    window.addEventListener('focus', scheduleRead);
   }
 
   /* ------------------------------------------------------- external links */
@@ -926,8 +1048,7 @@
     whenReady(() => {
       log('info', `chat.js attached to ${redactUrl(location.href)}`);
       listenForActivation();
-      pollUnread();
-      setInterval(pollUnread, POLL_MS);
+      watchUnread();
     });
   } else if (onOpaqueDocument) {
     // The failed-load page. Rewriting it needs no bridge, which is just as
@@ -942,9 +1063,9 @@
      * One thing runs here, and only because the alternative is a dead link.
      * The rest would be this app rearranging a page that is not its own for no
      * gain at all: the shortcuts are swallowed and then refused, the shim
-     * promises a notification permission it cannot honour, the poller scrapes a
-     * page that has no unread count in it, and the click interceptor takes
-     * clicks the page could serve better itself. */
+     * promises a notification permission it cannot honour, the unread watcher
+     * scrapes a page that has no unread count in it, and the click interceptor
+     * takes clicks the page could serve better itself. */
     installLinkPolicy(opensNewWindow);
   }
 })();

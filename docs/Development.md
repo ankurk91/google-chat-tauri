@@ -121,7 +121,7 @@ Each `features/` module opens with a doc comment explaining why it exists. Start
 
 `src-tauri/src/inject/chat.js` is the equivalent of a preload script: injected into Google's page as a Tauri
 initialization script and compiled in with `include_str!`, so cargo rebuilds when you edit it. It runs in the main frame
-only and does six jobs — poll the unread count, intercept link clicks, translate keyboard shortcuts, replace
+only and does six jobs — watch the unread count, intercept link clicks, translate keyboard shortcuts, replace
 `window.Notification`, listen for notification clicks, and rewrite the webview's own failed-load page.
 
 It is injected twice, at document start and again from `on_page_load` as a fallback, so **everything in it must be
