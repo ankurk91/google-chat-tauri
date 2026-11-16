@@ -169,6 +169,17 @@ slots come back as the user works through the tray — a burst of 60 still gave 
 same coupling the badge relies on. The second exists because the page plays its own sound and a daemon sound on top
 delivered two notes per message.
 
+### The bundle ships a 48px icon that `tauri icon` does not make
+
+`deliver` names the icon (`google-chat-tauri`) rather than sending pixels, and `xfce4-notifyd` draws a named icon at
+GTK's dialog size, 48px. With no 48px file in the theme, GTK3 takes the 128px one and draws it unscaled, so XFCE
+notifications carried a 128px logo. `icons/48x48.png` is listed in `bundle.icon` so the `.deb` installs it to
+`hicolor/48x48/apps`, and `scripts/gen-icons.py` writes it, since `pnpm tauri icon` would not. GNOME sizes the icon
+itself, which is why it never showed there.
+
+XFCE's **Open** button is the same notification's `default` action. `xfce4-notifyd` draws that as a button, and a
+click on the body only dismisses — so on XFCE the button is the only way through to the window, and it stays.
+
 ### The click-waiter thread is named explicitly
 
 Linux gives a new thread the creating thread's name, so the waiter spawned from the worker would inherit

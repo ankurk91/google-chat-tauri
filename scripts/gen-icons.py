@@ -105,6 +105,11 @@ def main():
     # 256 (which is all the deb and tray use) is pixel-exact.
     idle[256].resize((1024, 1024), Image.LANCZOS).save(ICONS / "source-1024.png")
 
+    # `tauri icon` makes no 48px size, and GTK3 needs one: a notification icon
+    # is drawn by name at 48px, and with nothing at 48 in the theme GTK takes
+    # the 128px file and draws it unscaled. `tauri icon` leaves this file be.
+    idle[256].resize((48, 48), Image.LANCZOS).save(ICONS / "48x48.png")
+
     for size in (16, 32):
         idle[size].save(TRAY / f"normal-{size}.png")
         unread[size].save(TRAY / f"badge-{size}.png")

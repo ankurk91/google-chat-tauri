@@ -146,6 +146,12 @@ later, and one of these was wrong for exactly that reason.
   in-page router, and the service worker holds the only handle on it.
 - **A notification "activation" is indistinguishable from a real click.** If a desktop's notification service invoked
   `default` on expiry, the window would rise after every message.
+- **GTK3 does not scale a themed icon down to the size asked for.** `Gtk.Image.new_from_gicon(ThemedIcon, DIALOG)` —
+  exactly what `xfce4-notifyd` 0.9.4 and 0.9.7 do for a notification's `app_icon` — with the app's icons in hicolor at
+  32, 128 and 256@2 drew **128×128** under hicolor, Adwaita and elementary-xfce-dark; with a 48px file added, 48×48; with
+  64px instead, 64×64. So the fix has to be an exact 48. Papirus hides it entirely by shipping its own `google-chat`
+  icon, which `ThemedIcon`'s default fallbacks reach. Measured on Mint 22.3 in an offscreen GTK window, since
+  `xfce4-notifyd` is not installed here.
 - **`notify_rust`'s `show()` is expensive enough to stall the main thread.** Measured against gnome-shell 50.1 over 25
   `Notify` calls: median 48 ms, p90 86 ms, **max 520 ms**. Tauri runs synchronous commands on the main thread, which on
   Linux also draws the window's own titlebar buttons.
