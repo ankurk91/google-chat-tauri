@@ -38,6 +38,9 @@ longer maintained, was 66 MB.
 - **Keyboard shortcuts** — `Ctrl+F` to search, `Ctrl` `+`/`-`/`0` to zoom,
   `Alt+←`/`Alt+→` to go back and forward, `Alt+Home` to return to Chat, `Ctrl+W` to hide to the tray. On macOS, `Cmd`
   stands in for `Ctrl`, and history is `Cmd+[`/`Cmd+]` and `Cmd+Shift+H`, leaving `Option+←`/`→` to move by word.
+- **Spell checking on Linux** — misspelled words are underlined as you type, and right-click offers corrections. It
+  checks in your system language and US English, using the Hunspell or Aspell dictionaries you have installed (for
+  example `hunspell-en-us`).
 - **Links open in your browser** — a Docs, Sheets, Drive or Calendar link someone shares opens in your real browser,
   with your extensions and your other tabs. Only Chat itself stays in this window.
 - **Attachments download through your browser** — clicking one hands the link to your browser, which saves it the way it

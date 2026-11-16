@@ -13,6 +13,8 @@ pub mod media;
 pub mod notifications;
 pub mod reset;
 pub mod sign_in;
+#[cfg(target_os = "linux")]
+pub mod spellcheck;
 pub mod tray;
 pub mod updates;
 pub mod user_agent;

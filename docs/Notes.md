@@ -95,6 +95,11 @@ later, and one of these was wrong for exactly that reason.
   `permission-request`, and wry 0.55 connects nothing to it. Measured in the app: `enumerateDevices` listed the devices,
   `getUserMedia` failed at once with `NotAllowedError` and no prompt; with the request allowed, both tracks opened and
   every device had a label. `enable-media-stream` is already on by default in 2.52 and made no difference either way.
+- **WebKit's loaded spelling languages are the truth; the requested ones are not.** Measured on Mint 22.3 / WebKitGTK
+  2.52.6 with `aspell-en` and `hunspell-en-us` installed: asking for `["en_IN", "en_US"]` loads both, because Enchant
+  falls back from `en_IN` to Aspell's generic `en` (it accepts both *colour* and *color*). Asking for
+  `["de_DE", "en_US"]` with no German dictionary loads `["en_US"]` alone, with no warning from WebKit. Enchant lists
+  only Aspell dictionaries here (`enchant-lsmod-2 -list-dicts`), so the Hunspell package is not what answers.
 - **WebRTC is not in Ubuntu's WebKitGTK build, so calls cannot work in-app.** `typeof RTCPeerConnection` is `"undefined"`
   in the app, and stays `"undefined"` in a bare view with `enable-webrtc` switched on. The 2.52.6 library
   (`2.52.6-0ubuntu0.24.04.1`, also what Mint 22 ships) contains no reference to GStreamer's `webrtcbin`, which WebKitGTK's

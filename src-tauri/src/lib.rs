@@ -190,6 +190,11 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             features::media::install(&window);
 
+            // WebKitGTK's spell checker is off by default and Tauri has no
+            // setting for it. See `features::spellcheck`.
+            #[cfg(target_os = "linux")]
+            features::spellcheck::install(&window);
+
             if prefs.zoom != 1.0 {
                 let _ = window.set_zoom(prefs.zoom);
             }

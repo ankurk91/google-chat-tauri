@@ -129,6 +129,14 @@ while the window is on Chat itself (`urls::is_chat_page`, narrower than the link
 sign-in hosts). Everything else — notifications included — goes back to WebKit and is refused as before. It checks the
 page the window shows, not the frame asking, because WebKitGTK does not say which frame that is.
 
+### `features::spellcheck` always asks for `en_US` as well as the locale (Linux only)
+
+WebKitGTK's spell checker is off by default, and switching it on does nothing by itself: with no language list it
+checks against nothing. So the list is set too — the locale's `ll_CC` names, then `en_US`. A language with no
+dictionary is skipped rather than failing, so asking costs nothing, and `en_US` is there so that a locale with no
+dictionary of its own still gets checked. The log line reads back what WebKit actually loaded, which is the only
+place a missing dictionary shows. Corrections come from WebKit's own context menu; replacing that menu would lose them.
+
 ## Notifications
 
 ### `window.Notification` is replaced wholesale, and Linux talks to `notify-rust` directly
@@ -371,7 +379,7 @@ way back.
 
 ## Deliberately not built
 
-Auto-update that installs itself, and a spellchecker toggle, for which Tauri exposes no API.
+Auto-update that installs itself. A menu toggle for spell checking: it is always on, on Linux only.
 
 Attachment links open in the system browser, which works. `on_download` would keep them in-app: one line in
 `urls::is_in_app`.
