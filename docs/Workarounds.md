@@ -364,6 +364,11 @@ place and writes every line twice.
 Click events: libappindicator delivers none, ksni does. Cargo can only turn features on, so a direct dependency is the
 only way to enable it; the app never calls tray-icon.
 
+Its version must be the one Tauri resolves. A newer one is a second copy carrying the feature while Tauri keeps using
+its own without it — and since the app names no tray-icon type, nothing fails to build. v1.3.0 shipped like that: the
+tray came up on libayatana-appindicator, which exposes no `Activate` method, so every panel opened the menu on a left
+click. `cargo tree -i ksni` must lead to `tauri`, and Dependabot is told to leave the crate alone.
+
 ### The tray's About is a regular item on Linux
 
 The ksni menu snapshot renders predefined items (except separators) as disabled blanks, so About is an ordinary

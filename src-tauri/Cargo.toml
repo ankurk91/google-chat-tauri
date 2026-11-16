@@ -70,7 +70,13 @@ notify-rust = "4"
 # Declared only to enable its `ksni` feature: the default Linux tray backend
 # (libappindicator) delivers no click events, ksni does. The app never calls
 # tray-icon. See `features::tray` and Workarounds.md.
-tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
+#
+# The version must be the one Tauri resolves: a feature only reaches the copy
+# it is enabled on, and a newer one here is a second copy that Tauri never
+# calls. Nothing fails to build when that happens -- the app never names a
+# tray-icon type -- the tray just stops seeing clicks again, which is how
+# v1.3.0 shipped. Check with `cargo tree -i ksni`: it must lead to Tauri.
+tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
 # The camera and mic are granted by answering WebKitWebView::permission-request,
 # which Tauri never connects; see `features::media`. Tauri hands out the
 # WebKitWebView typed with this crate, so the version has to be the one Tauri

@@ -38,6 +38,13 @@ updates:
       - dependency-name: webview2-com
       - dependency-name: webkit2gtk
 
+      # Declared only to switch on its `ksni` feature, which gives the Linux
+      # tray its click events -- and a feature reaches only the copy it is
+      # enabled on. A bump past Tauri's version builds a second copy that
+      # Tauri never calls, so the build stays green and the tray goes deaf to
+      # left clicks: v1.3.0 shipped that way. Move it by hand, with Tauri.
+      - dependency-name: tray-icon
+
   # Keeps the actions in the workflows current; nothing else watches them.
   - package-ecosystem: github-actions
     directory: /
