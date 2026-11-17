@@ -1,14 +1,14 @@
 [package]
 name = "google-chat-tauri"
-version = "1.4.0"
+version = "1.5.0"
 description = "Unofficial desktop app for Google Chat."
 authors = ["ankurk91"]
 license = "GPL-3.0-only"
 repository = "https://github.com/ankurk91/google-chat-tauri"
 edition = "2024"
 # The floor, not a preference: the highest MSRV anything in Cargo.lock asks for.
-# tauri 2.12 sets it (1.90); behind it sit notify-rust 4.18 with image, time,
-# plist and the icu crates at 1.88. Keep it identical to the channel in
+# tauri 2.12 sets it (1.90); behind it sit notify-rust 4.19 at 1.89, and image,
+# time, plist and the icu crates at 1.88. Keep it identical to the channel in
 # rust-toolchain.toml at the
 # repo root -- that is the compiler CI, the release and you actually use, so
 # building at the floor is what keeps this number from going stale. When a
