@@ -29,6 +29,13 @@ pub struct Prefs {
     /// raise the same dialog every twelve hours until they get round to it. The
     /// manual check ignores this.
     pub offered_version: String,
+    /// Linux only: underline misspelled words. See `features::spellcheck`.
+    pub spellcheck: bool,
+    /// Linux only: the dictionaries picked under Preferences → Spelling, in
+    /// the order they were picked. `None` means automatic -- the system
+    /// languages plus US English -- and is what a fresh install gets, so the
+    /// default follows the locale rather than being frozen into the file.
+    pub spell_languages: Option<Vec<String>>,
 }
 
 impl Default for Prefs {
@@ -38,6 +45,8 @@ impl Default for Prefs {
             start_hidden: false,
             check_updates: true,
             offered_version: String::new(),
+            spellcheck: true,
+            spell_languages: None,
         }
     }
 }
@@ -260,6 +269,10 @@ mod tests {
         let p: Prefs = serde_json::from_str("{}").unwrap();
         assert_eq!(p.zoom, 1.0);
         assert!(!p.start_hidden);
+        // A config written before spell checking existed keeps it on, and on
+        // automatic languages.
+        assert!(p.spellcheck);
+        assert_eq!(p.spell_languages, None);
     }
 
     #[test]

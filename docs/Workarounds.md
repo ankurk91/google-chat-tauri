@@ -132,10 +132,26 @@ page the window shows, not the frame asking, because WebKitGTK does not say whic
 ### `features::spellcheck` always asks for `en_US` as well as the locale (Linux only)
 
 WebKitGTK's spell checker is off by default, and switching it on does nothing by itself: with no language list it
-checks against nothing. So the list is set too — the locale's `ll_CC` names, then `en_US`. A language with no
+checks against nothing. So on automatic the list is set too — the locale's names, then `en_US`. A language with no
 dictionary is skipped rather than failing, so asking costs nothing, and `en_US` is there so that a locale with no
-dictionary of its own still gets checked. The log line reads back what WebKit actually loaded, which is the only
-place a missing dictionary shows. Corrections come from WebKit's own context menu; replacing that menu would lose them.
+dictionary of its own still gets checked. A bare language (`de`) is asked for only when no `ll_CC` of it is already
+on the list, so `en_IN:en` does not stack a generic English on the specific one. The log line reads back what WebKit
+actually loaded, which is the only place a missing dictionary shows. Corrections come from WebKit's own context menu;
+replacing that menu would lose them.
+
+### Preferences → Spelling lists dictionaries through Enchant, opened with `dlopen` (Linux only)
+
+WebKit can take a language list but cannot say which languages it could take, so the menu asks Enchant directly —
+the library WebKit checks through, already mapped into the process. `libloading` opens it by soname instead of the
+build linking it, which would add Enchant's headers to every build and to CI for four function calls. A broker of
+our own sees the same providers and dictionaries as WebKit's, and `enchant_broker_dict_exists` falls back the same
+way (`en_IN` → Aspell's `en`), which is why `en_IN` is offered with no dictionary named after it. If Enchant cannot
+be opened the menu offers the system languages alone.
+
+The ticks are set from what WebKit reports *loaded* after every change, never from what was clicked: a picked
+dictionary that is not installed would otherwise show as working. That is also what puts back the tick on the last
+language when unticking it is refused — an empty list would check against nothing, and **Check Spelling** is the way
+to turn it off. The dictionary list is read once, when the menu is built.
 
 ## Notifications
 
@@ -272,9 +288,10 @@ nothing at all.
 
 `Menu::get` searches the top level only, so every check item under Preferences is invisible to it. Rebuilding the whole
 menu with `set_menu` does get every tick right, but GTK answers it with one *"no accelerator installed in accel group"*
-warning per accelerator, every time. Walking by hand avoids both. This is also why the Preferences toggles keep their
-own state rather than reading a tick back — the link grant is the one setting that changes without a click, so it is the
-one that needs to clear its own tick.
+warning per accelerator, every time. Walking by hand avoids both, and it recurses, because Preferences → Spelling sits
+a level deeper. This is also why the Preferences toggles keep their own state rather than reading a tick back — the
+link grant changes without a click, and the Spelling ticks follow what WebKit loaded, so those are the ones that set
+their own ticks.
 
 ## Windows, restart and reset
 
@@ -395,7 +412,7 @@ way back.
 
 ## Deliberately not built
 
-Auto-update that installs itself. A menu toggle for spell checking: it is always on, on Linux only.
+Auto-update that installs itself. Spell-checking settings on macOS and Windows, whose webviews follow the system's.
 
 Attachment links open in the system browser, which works. `on_download` would keep them in-app: one line in
 `urls::is_in_app`.

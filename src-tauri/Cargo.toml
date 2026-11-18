@@ -83,6 +83,10 @@ tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
 # resolves, and it is already in the tree via wry. `v2_24` is for the
 # device-info request; every supported distribution ships far newer.
 webkit2gtk = { version = "2.0", features = ["v2_24"] }
+# Opens the Enchant library WebKitGTK has already loaded, to list the installed
+# spelling dictionaries for Preferences → Spelling; see `features::spellcheck`.
+# 0.7 because that is the copy already in the tree.
+libloading = "0.7"
 
 # Windows menu accelerators never reach tao's message loop, so Quit and
 # close-to-tray are asked of WebView2 through `AcceleratorKeyPressed`; see

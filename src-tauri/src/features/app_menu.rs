@@ -161,7 +161,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // the user may have removed the autostart entry through their desktop's own
     // startup-applications tool.
     let prefs = app.state::<Config>().get();
-    let preferences = SubmenuBuilder::new(app, "Preferences")
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+    let mut preferences = SubmenuBuilder::new(app, "Preferences")
         .item(
             &CheckMenuItemBuilder::with_id("pref-autostart", "Launch at Login")
                 .checked(crate::features::autostart::is_enabled(app))
@@ -177,7 +178,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &CheckMenuItemBuilder::with_id("pref-check-updates", "Check for Updates Automatically")
                 .checked(prefs.check_updates)
                 .build(app)?,
-        )
+        );
+
+    // Linux only: macOS and Windows webviews check spelling their own way.
+    #[cfg(target_os = "linux")]
+    {
+        preferences = preferences.item(&crate::features::spellcheck::submenu(app, &prefs)?);
+    }
+
+    let preferences = preferences
         .separator()
         // Not a stored preference, which is why it sits below the separator:
         // it lapses on its own and never survives a restart. See
@@ -206,25 +215,37 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     Menu::with_items(app, &[&file, &edit, &view, &history, &preferences, &help])
 }
 
-/// Find a check item one level down, by id.
+/// Find a check item anywhere below the top level, by id.
 ///
 /// `Menu::get` searches the top level only, which is why the check items in
 /// Preferences cannot be read back through it -- and why the toggles below
 /// track their own state instead of asking the menu. Walking the submenus by
-/// hand does reach them, and the link grant needs that: it is the one setting
-/// that switches itself off, so something has to clear its tick without the
-/// user clicking anything.
+/// hand does reach them, and two things need that: the link grant, the one
+/// setting that switches itself off, and Preferences → Spelling, whose ticks
+/// follow what WebKit actually loaded rather than what was clicked.
 pub fn nested_check_item<R: Runtime>(app: &AppHandle<R>, id: &str) -> Option<CheckMenuItem<R>> {
-    for top in app.menu()?.items().ok()? {
-        let Some(submenu) = top.as_submenu() else {
-            continue;
-        };
-        for item in submenu.items().ok()? {
-            if let Some(check) = item.as_check_menuitem()
-                && check.id() == id
-            {
-                return Some(check.clone());
-            }
+    app.menu()?
+        .items()
+        .ok()?
+        .iter()
+        .filter_map(|top| top.as_submenu())
+        .find_map(|submenu| find_check_item(submenu, id))
+}
+
+fn find_check_item<R: Runtime>(
+    submenu: &tauri::menu::Submenu<R>,
+    id: &str,
+) -> Option<CheckMenuItem<R>> {
+    for item in submenu.items().ok()? {
+        if let Some(check) = item.as_check_menuitem()
+            && check.id() == id
+        {
+            return Some(check.clone());
+        }
+        if let Some(inner) = item.as_submenu()
+            && let Some(found) = find_check_item(inner, id)
+        {
+            return Some(found);
         }
     }
     None
@@ -307,6 +328,10 @@ pub fn handle(app: &AppHandle, id: &str) {
         }
         id if id == crate::features::external_links::MENU_ID => {
             crate::features::external_links::toggle_in_app(app)
+        }
+        #[cfg(target_os = "linux")]
+        id if id.starts_with(crate::features::spellcheck::MENU_PREFIX) => {
+            crate::features::spellcheck::handle(app, id)
         }
 
         "pref-start-hidden" => {

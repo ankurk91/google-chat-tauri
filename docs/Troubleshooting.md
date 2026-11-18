@@ -63,6 +63,12 @@ rather than the window. Wayland does not permit an application to raise itself, 
 instead; click it to get the window. Minimising first, or clicking a message notification, both bring it back directly.
 On an X11 session this does not happen.
 
+**Spelling mistakes are not underlined, or your language is missing (Linux).** Open **Preferences → Spelling**:
+**Check Spelling** must be ticked, and the ticks show the dictionaries actually in use. A language that is not listed
+has no dictionary installed — add one with your package manager, for example `sudo apt install hunspell-de-de` (or
+`aspell-de`), then restart the app so the menu picks it up. The log records every change as a `spellcheck:` line
+naming the dictionaries that loaded.
+
 **It opens a Google or Gmail marketing page instead of Chat.** That is what Google serves a signed-out browser, so the
 app is not broken — its session is gone. If you had just used **Help → Reset App Data** or **File → Sign Out**, that is
 exactly what those do. The app should take itself to the sign-in form within a second; if it does not, the **Sign in**
