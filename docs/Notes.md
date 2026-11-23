@@ -32,8 +32,8 @@ later, and one of these was wrong for exactly that reason.
   or in the tray. So the old poll was not expensive on a fresh page — about 0.2% of one core — and it does not explain
   `WebKitWebProcess` growing to 3 GB over a day. That is Chat's own heap: anonymous memory, gone on a reload.
 - **WebKitGTK's failed-load page has no styling whatsoever.** It is built as `<html><body>%s</body></html>` and that is
-  the whole template — confirmed by reading it out of the shipped `libwebkit2gtk-4.1`. Unstyled text is black, the
-  window's `background_color` is Google's dark grey, so the one line explaining the failure renders black on black. wry
+  the whole template — confirmed by reading it out of the shipped `libwebkit2gtk-4.1`: one line of unstyled text and no
+  way to retry. (While the window had a dark `background_color`, that line rendered black on black.) wry
   exposes no `did-fail-load` equivalent for Rust to hang a replacement on. WKWebView leaves the document empty and
   WebView2 draws its own styled page.
 - **That page is a near-dead end.** Measured by pointing `APP_URL` at a local port with nothing on it, then starting a

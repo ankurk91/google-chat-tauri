@@ -7,8 +7,9 @@
   in Rust and navigates straight to the remote Google Chat URL.
   See src-tauri/src/features/window.rs
 
-  The background matches the window's background_color so there is no flash if
-  this is ever painted.
+  Dark on purpose, in case this is ever painted. The window itself sets no
+  background colour: on Linux tao applies one to the whole GtkWindow, and the
+  menu bar shows it through, dark on a light theme.
 -->
 <style>
   html, body {

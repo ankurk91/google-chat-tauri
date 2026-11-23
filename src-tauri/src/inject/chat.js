@@ -916,9 +916,8 @@
    *     <html><body>Could not connect to server</body></html>
    *
    * with no stylesheet of any kind -- the template is in the shipped
-   * libwebkit2gtk-4.1, and that is the whole of it. Unstyled text is black and
-   * this window's background_color is Google's dark grey, so the one line
-   * saying what went wrong is black on black and cannot be read.
+   * libwebkit2gtk-4.1, and that is the whole of it: one unstyled line saying
+   * what went wrong, and no way to try again.
    *
    * Electron answers this with `did-fail-load` and a local error page. wry
    * exposes no equivalent hook, so Rust has nothing to hang a replacement on --
@@ -942,8 +941,7 @@
   const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
   const escapeHtml = (text) => String(text).replace(/[&<>"]/g, (ch) => ESCAPES[ch]);
 
-  // #202124 is the window's own background_color (see features/window.rs), so
-  // there is no seam between the two while this paints.
+  // Google's dark surface colour, as Chat uses in dark mode.
   const ERROR_PAGE_CSS = `
     :root { color-scheme: dark; }
     body { margin: 0; background: #202124; color: #e8eaed;

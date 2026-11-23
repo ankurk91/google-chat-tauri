@@ -23,11 +23,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         // Shown by the caller once setup is done, mirroring electron's
         // `show: false` + `ready-to-show`.
         .visible(false)
-        // Painted before the page renders. Electron used #E8EAED, but Chat
-        // follows the system theme and a light flash on a dark desktop is
-        // jarring, so use Google's dark surface colour instead. Matches the
-        // background in `frontend/index.html`.
-        .background_color(tauri::window::Color(0x20, 0x21, 0x24, 0xFF))
+        // No `background_color`, though the page starts white on a dark
+        // desktop. On Linux tao applies it as CSS on the whole GtkWindow, and
+        // the menu bar has no background of its own, so a dark colour left the
+        // theme's dark menu text on a dark bar.
         // Zoom is handled in chat.js instead, so the level can be persisted;
         // wry's built-in hotkeys would bypass that.
         .zoom_hotkeys_enabled(false)

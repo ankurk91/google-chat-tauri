@@ -327,9 +327,9 @@ close-to-tray, or the window-close veto cancels it.
 
 ### `chat.js` rewrites the webview's failed-load page
 
-WebKitGTK builds that page as `<html><body>%s</body></html>` — the whole template — so the one line explaining the
-failure renders as black text on the window's dark grey background. wry exposes no `did-fail-load` equivalent for Rust
-to hang a replacement on, so the page-side script does it.
+WebKitGTK builds that page as `<html><body>%s</body></html>` — the whole template — so the failure is one line of
+unstyled text with no way to retry. wry exposes no `did-fail-load` equivalent for Rust to hang a replacement on, so the
+page-side script does it.
 
 The fingerprint it matches — empty head, a body with text and no elements — is narrow on purpose: WKWebView leaves the
 document empty and WebView2 draws its own styled page, so neither is touched.
