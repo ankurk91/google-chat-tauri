@@ -116,10 +116,18 @@ fn toggle_window(app: &AppHandle) {
     let visible = win.is_visible().unwrap_or(false);
     let focused = win.is_focused().unwrap_or(false);
 
-    // Electron used a different predicate on Windows because a click on the tray
-    // steals focus from the window before the handler runs.
+    // Hidden means show, whatever tao says about focus. tao's focus flag is
+    // bookkeeping from WM_NCACTIVATE/WM_KILLFOCUS, and a hidden window can keep
+    // reporting focus; `visible || focused` then hid it again on every click,
+    // and only a second launch brought it back. See Workarounds.md.
+    if !visible && focused {
+        log::info!("tray: hidden window still reports focus, showing it anyway");
+    }
+
+    // A click on the tray takes focus from the window before this runs, so on
+    // Windows `focused` is useless for the visible case too: visible means hide.
     let should_hide = if cfg!(target_os = "windows") {
-        visible || focused
+        visible
     } else {
         visible && focused
     };

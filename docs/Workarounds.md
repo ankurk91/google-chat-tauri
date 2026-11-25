@@ -410,6 +410,16 @@ no way to ask ksni to wait for one. Without the `match` in `setup` the app would
 `close_to_tray::hide` minimises instead of hiding and `--hidden` is ignored, since a hidden window with no tray has no
 way back.
 
+### Toggle on Windows looks only at visibility, not focus (Windows only)
+
+Electron hid on `visible || focused` because a tray click takes focus from the window before the handler runs. The
+`|| focused` half was there for a visible window, and `visible` alone already covers that. For a *hidden* window it is
+harmful: tao's `is_focused` is not a query but a flag kept from `WM_NCACTIVATE` and `WM_KILLFOCUS`, and a window that
+misses the message that clears it keeps reporting focus after it is hidden. Toggle then hid it again on every click,
+from the icon or the menu, while a second launch, which calls `show_and_focus` without asking, brought it back. Reported
+on Windows 10 after closing with X and possibly locking the screen. The log line `tray: hidden window still reports
+focus` marks each time it would have happened.
+
 ## Deliberately not built
 
 Auto-update that installs itself. Spell-checking settings on macOS and Windows, whose webviews follow the system's.
