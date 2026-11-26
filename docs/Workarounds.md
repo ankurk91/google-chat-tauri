@@ -121,13 +121,17 @@ dispatches a second paste event carrying it as a file. Chat takes the replay alt
 condition: a paste with anything in it is left alone, and the replay itself is untrusted and not empty, which is what
 keeps it from looping. Kept off macOS because WKWebView answers the same read with a "Paste" callout of its own.
 
-### `features::media` answers WebKit's permission requests itself (Linux only)
+### `features::media` grants the camera and mic on Chat, and nowhere else
 
-Tauri connects nothing to `WebKitWebView::permission-request`, and an unanswered request is refused — so every
-`getUserMedia` failed at once with `NotAllowedError`. The handler allows the camera, the mic and device labels, only
-while the window is on Chat itself (`urls::is_chat_page`, narrower than the link allow-list, which also trusts the
-sign-in hosts). Everything else — notifications included — goes back to WebKit and is refused as before. It checks the
-page the window shows, not the frame asking, because WebKitGTK does not say which frame that is.
+Each webview falls back differently when the host gives no answer: WebKitGTK refuses (every `getUserMedia` failed at
+once with `NotAllowedError`), WKWebView grants every page, WebView2 shows its own prompt. `media::answer`, given to
+Tauri's permission handler, makes it the same everywhere: camera and mic granted while the window is on Chat itself
+(`urls::is_chat_page`, narrower than the link allow-list, which also trusts the sign-in hosts) and refused on any other
+page. Every other kind — notifications included — is left to the webview as before. It checks the page the window
+shows, not the frame asking, because not every webview says which frame that is.
+
+On macOS the bundle's `Info.plist` carries `NSCameraUsageDescription` and `NSMicrophoneUsageDescription`: WebKit refuses
+capture outright in an app that has neither, before macOS is asked.
 
 ### `features::spellcheck` always asks for `en_US` as well as the locale (Linux only)
 

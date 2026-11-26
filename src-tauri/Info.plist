@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's Info.plist by Tauri. WebKit refuses getUserMedia
+     outright in an app without these keys, before macOS is asked at all; with
+     them, macOS shows its own prompt the first time. See features::media. -->
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Google Chat uses the camera to record video messages.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Google Chat uses the microphone to record voice and video messages.</string>
+</dict>
+</plist>

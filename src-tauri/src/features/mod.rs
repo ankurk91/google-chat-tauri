@@ -8,7 +8,6 @@ pub mod connectivity;
 pub mod diagnostics;
 pub mod downloads;
 pub mod external_links;
-#[cfg(target_os = "linux")]
 pub mod media;
 pub mod notifications;
 pub mod reset;

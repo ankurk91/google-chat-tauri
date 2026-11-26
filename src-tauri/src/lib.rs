@@ -184,12 +184,6 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             features::accelerators::install(&window);
 
-            // WebKitGTK refuses the camera and mic to a page unless the host
-            // answers its permission request, and Tauri never does. See
-            // `features::media`.
-            #[cfg(target_os = "linux")]
-            features::media::install(&window);
-
             // WebKitGTK's spell checker is off by default and Tauri has no
             // setting for it. See `features::spellcheck`.
             #[cfg(target_os = "linux")]

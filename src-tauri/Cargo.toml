@@ -77,12 +77,10 @@ notify-rust = "4"
 # tray-icon type -- the tray just stops seeing clicks again, which is how
 # v1.3.0 shipped. Check with `cargo tree -i ksni`: it must lead to Tauri.
 tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
-# The camera and mic are granted by answering WebKitWebView::permission-request,
-# which Tauri never connects; see `features::media`. Tauri hands out the
-# WebKitWebView typed with this crate, so the version has to be the one Tauri
-# resolves, and it is already in the tree via wry. `v2_24` is for the
-# device-info request; every supported distribution ships far newer.
-webkit2gtk = { version = "2.0", features = ["v2_24"] }
+# Tauri hands out the WebKitWebView typed with this crate, for
+# `features::spellcheck`, so the version has to be the one Tauri resolves, and
+# it is already in the tree via wry.
+webkit2gtk = "2.0"
 # Opens the Enchant library WebKitGTK has already loaded, to list the installed
 # spelling dictionaries for Preferences → Spelling; see `features::spellcheck`.
 # 0.7 because that is the copy already in the tree.

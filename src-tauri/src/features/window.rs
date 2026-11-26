@@ -40,6 +40,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .initialization_script(crate::inject::SCRIPT)
         .on_navigation(crate::features::external_links::navigation_guard)
         .on_download(crate::features::downloads::handle)
+        // Camera and mic for Chat on all three webviews; see `features::media`.
+        .on_permission_request(crate::features::media::answer)
         .on_page_load(|webview, payload| match payload.event() {
             // WebKitGTK reports this at `Committed`: the document exists and
             // nothing is painted yet, which is the moment to notice that Google

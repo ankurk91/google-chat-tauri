@@ -248,8 +248,7 @@ pub fn should_open_externally(url: &url::Url) -> bool {
 /// refuses `getUserMedia` to anything else and a request from plain HTTP here
 /// would mean something has gone badly wrong.
 ///
-/// Only `features::media` asks, and that is Linux only.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+/// Only `features::media` asks.
 pub fn is_chat_page(url: &url::Url) -> bool {
     if url.scheme() != "https" {
         return false;
