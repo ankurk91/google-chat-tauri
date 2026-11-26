@@ -151,6 +151,51 @@ after that is normal.
 
 **Uninstall.** Use **Add or remove programs**.
 
+## Features by platform
+
+The app runs Chat on the web engine your system already has, so a few things depend on that engine or on your desktop
+rather than on the app.
+
+| Feature                                       | Linux             | macOS             | Windows           |
+|-----------------------------------------------|-------------------|-------------------|-------------------|
+| **Window and tray**                           |                   |                   |                   |
+| Lives in the tray, closing hides the window   | Yes ¹             | Yes               | Yes               |
+| Remembers size, position and maximised state  | Yes               | Yes               | Yes               |
+| Launch at login, or start hidden in the tray  | Yes               | Yes               | Yes               |
+| One instance, a second launch focuses it      | Yes               | Yes               | Yes               |
+| **Unread messages**                           |                   |                   |                   |
+| Count in the window title                     | Yes               | Yes               | Yes               |
+| Dot on the tray icon                          | Yes ¹             | Yes               | Yes               |
+| Count on the dock or taskbar icon             | Ubuntu only ²     | Yes               | Yes               |
+| **Notifications**                             |                   |                   |                   |
+| Desktop notifications, with sound             | Yes               | Yes               | Yes               |
+| Clicking one brings the window back           | Yes               | No                | No                |
+| **Writing messages**                          |                   |                   |                   |
+| Attach a file with the upload button          | Yes               | Yes               | Yes               |
+| Drag a file onto a conversation               | No ³              | Yes               | Yes               |
+| Paste an image                                | Yes               | Yes               | Yes               |
+| Pick spelling dictionaries in **Preferences** | Yes               | No                | No                |
+| **Camera and calls**                          |                   |                   |                   |
+| Camera and microphone                         | Yes               | Yes ⁴             | Yes               |
+| Record a video or voice message               | No ⁵              | Yes               | Yes               |
+| Voice and video calls                         | In your browser ⁶ | In your browser ⁶ | In your browser ⁶ |
+| **Everything else**                           |                   |                   |                   |
+| Links and attachments open in your browser    | Yes               | Yes               | Yes               |
+| Waits out a missing network and reconnects    | Yes               | Yes               | Yes               |
+| Tells you when a new release is out           | Yes               | Yes               | Yes               |
+| Reset App Data, from the **Help** menu        | Yes               | Yes               | Yes               |
+
+1. Plain GNOME shows no tray icons without the AppIndicator extension, which Ubuntu ships and enables. Without a tray,
+   closing the window minimises it instead.
+2. The dock counter is an Ubuntu Dock feature. Other Linux desktops have no such API; the title and the tray icon carry
+   the same number.
+3. WebKitGTK hands the page a dropped file's path instead of the file
+   ([WebKit bug 323277](https://bugs.webkit.org/show_bug.cgi?id=323277)), so Chat types the path into the message
+   instead of attaching it. Use the upload button until a WebKitGTK release fixes it.
+4. macOS asks once, the first time Chat wants the camera or microphone.
+5. WebKitGTK's recorder produces an empty file whenever sound is included, and the camera preview stays black.
+6. A call is a Google Meet link, and like other Google links it opens in your browser.
+
 ## Troubleshooting
 
 Blank window, missing notifications, sign-in trouble: see

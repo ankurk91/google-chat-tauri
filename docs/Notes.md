@@ -91,10 +91,17 @@ later, and one of these was wrong for exactly that reason.
   ([WebKit bug 323277](https://bugs.webkit.org/show_bug.cgi?id=323277), and
   [320301](https://bugs.webkit.org/show_bug.cgi?id=320301) for the same in Epiphany). Disabling the handler is still
   what macOS and Windows need; on Linux, attach through the upload button until a WebKitGTK release carries the fix.
+  **Not built, a possible fix:** keep Tauri's drag-drop handler on for Linux only. It gets the real paths from the
+  desktop's own drag and drop, not from the page, so Rust can read those files and hand the bytes to `chat.js`, which
+  replays them as a paste into the composer — the same untrusted paste Chat already accepts for images. Costs: Chat's
+  own drop-zone highlight is gone on Linux, files other than images through paste are unmeasured, and large files cross
+  the IPC bridge.
 - **The camera and mic are refused until the host says yes.** WebKitGTK routes `getUserMedia` through
   `permission-request`, and wry 0.55 connects nothing to it. Measured in the app: `enumerateDevices` listed the devices,
   `getUserMedia` failed at once with `NotAllowedError` and no prompt; with the request allowed, both tracks opened and
   every device had a label. `enable-media-stream` is already on by default in 2.52 and made no difference either way.
+  WebKitGTK's separate device-info request, which the first handler also allowed, was never asked: across every camera
+  session in the log, September to November, not one appeared. The device names come with the camera grant itself.
 - **WebKit's loaded spelling languages are the truth; the requested ones are not.** Measured on Mint 22.3 / WebKitGTK
   2.52.6 with `aspell-en` and `hunspell-en-us` installed: asking for `["en_IN", "en_US"]` loads both, because Enchant
   falls back from `en_IN` to Aspell's generic `en` (it accepts both *colour* and *color*). Asking for
@@ -112,6 +119,29 @@ later, and one of these was wrong for exactly that reason.
   oscillator track; a video-only H.264 recording from a canvas produced 25 KB in 2 s, and every combination with audio
   in it — AAC or Opus, with or without video — produced nothing. Swapping the type in `chat.js` would only turn "does
   not start" into "sends an empty file", so it is not done.
+
+  Re-measured 2026-11-26, Mint 22.3 / WebKitGTK 2.52.6, signed-in app plus a bare WebKitGTK view:
+  - **Chat now asks for MP4 for video** (`video/mp4;codecs=avc1,mp4a.40.2`), so the recorder starts and the timer runs.
+    Voice messages still ask for `audio/ogg; codecs=opus` and still throw.
+  - **The preview is black because Chat opens the camera twice.** WebKit lists one physical camera under two providers
+    (`v4l2` and PipeWire). The first `getUserMedia` takes `/dev/video0` through `v4l2src`; the second starts a PipeWire
+    pipeline on the same device, which fails with `error set output format: -16 (Device or resource busy)`. Its track
+    stays `live` and never delivers a frame (`readyState 0`, `0x0`), so the recording is 0 bytes and the send fails.
+    Reproduced in the bare view: a second request for the same camera while the first is open gets no frames, and a
+    `clone()` of the open track gets 1280×720 frames.
+  - **Sound is still the blocker.** On a live camera track, video-only `video/mp4;codecs=avc1` recorded 3.7 MB in 3 s;
+    the same with audio, and audio-only `audio/mp4`, recorded 0 bytes. WebKit logs that `isofmp4mux` (gst-plugins-rs,
+    not packaged for Ubuntu 24.04) is missing and falls back to `mp4mux`.
+  - **The pieces for a recorder of our own work.** The mic delivers sound to WebAudio (peak 0.037 over 3 s, every read
+    non-zero). WebCodecs is present: `AudioEncoder` supports Opus, AAC, FLAC and Vorbis, `VideoEncoder` supports H.264,
+    VP8 and VP9, and 2 s of mic audio fed through a `ScriptProcessorNode` encoded to 97 Opus packets, 14 KB.
+    `MediaStreamTrackProcessor` is undefined, so video frames would have to come through a `<video>` and a canvas.
+  - **Not built, a possible fix (Linux only, in `chat.js`):** (1) when Chat asks for a camera that is already open,
+    answer with `clone()`s of the open tracks instead of a second capture; (2) stand in for `MediaRecorder` on the
+    types WebKit cannot record — mic through WebAudio into `AudioEncoder`, wrapped as Ogg Opus for voice messages
+    (small); camera frames drawn from a `<video>` into a canvas, `VideoEncoder` H.264 plus `AudioEncoder` AAC, written
+    as MP4 for video messages (several hundred lines). Voice first: it proves whether Chat's servers accept a file we
+    wrote. Unknowns: that acceptance, the CPU cost of encoding, and Chat changing the recorder it calls.
 
 ## Sign-in
 
